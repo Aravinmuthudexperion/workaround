@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "connectors" %}
+{% block title %}Connectors{% endblock %}
+{% block crumbs %}Connectors{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Connectors</h1><div class="sub">How telemetry reaches ARC Tower. <strong>Push</strong>: the app sends OpenTelemetry using env variables. <strong>Pull</strong>: ARC reads the platform's own monitoring store on a schedule.</div></div>
+  <a class="btn primary" href="/onboard">Onboard a product</a>
+</div>
+
+<div class="card">
+  <h2>Pull connectors</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Product</th><th>Connector</th><th>Every</th><th>Status</th><th>Last run</th><th class="num">Records</th><th>Message</th><th></th></tr></thead>
+    <tbody>
+    {% for p, c in configured %}
+      <tr><td><a href="/products/{{ p.id }}">{{ p.name }}</a><div class="faint">{{ p.tenant.name }}</div></td>
+        <td>{{ c.type }}</td><td class="muted">{{ c.interval_seconds }}s</td>
+        <td>{% if not c.enabled %}<span class="badge">disabled</span>{% elif c.last_status == 'ok' %}<span class="badge ok">ok</span>{% elif c.last_status == 'error' %}<span class="badge bad">error</span>{% else %}<span class="badge info">pending</span>{% endif %}</td>
+        <td class="muted">{{ c.last_run_at | ago }}</td><td class="num">{{ c.last_record_count }}</td>
+        <td class="faint" style="max-width:320px">{{ c.last_message }}</td>
+        <td><div class="inline">
+          <form method="post" action="/connectors/{{ c.id }}/run">{{ m.csrf() }}<button class="btn small">Run now</button></form>
+          <form method="post" action="/connectors/{{ c.id }}/toggle">{{ m.csrf() }}<button class="btn small">{{ 'Disable' if c.enabled else 'Enable' }}</button></form>
+        </div></td></tr>
+    {% else %}<tr><td colspan="8" class="muted">No pull connectors configured.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card mt">
+  <h2>Push products</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Product</th><th>Connector</th><th>Active keys</th><th>Last data</th></tr></thead>
+    <tbody>
+    {% for p in push_products %}
+      <tr><td><a href="/products/{{ p.id }}">{{ p.name }}</a><div class="faint">{{ p.tenant.name }}</div></td><td>{{ p.connector_type }}</td>
+        <td>{{ p.ingest_keys | selectattr("active") | list | length }}</td><td class="muted">{{ p.last_seen_at | ago }}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">No push products.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<h2 class="mt-lg">Catalog</h2>
+{% for category, items in categories.items() %}
+  <h3 class="mt">{{ category }}</h3>
+  <div class="grid grid-3">
+  {% for c in items %}
+    <div class="card"><div class="card-head"><h3 style="margin:0">{{ c.name }}</h3>{{ m.maturity_badge(c.maturity) }}</div>
+      <p class="muted">{{ c.summary }}</p><span class="badge accent plain">{{ c.mode.value }}</span></div>
+  {% endfor %}
+  </div>
+{% endfor %}
+{% endblock %}

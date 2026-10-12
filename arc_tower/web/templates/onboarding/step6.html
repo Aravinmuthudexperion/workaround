@@ -1,0 +1,13 @@
+{% extends "onboarding/_wizard.html" %}
+{% block heading %}{{ product.name }} is onboarded{% endblock %}
+{% block intro %}Standard dashboards are live and refresh every 30 seconds. Editors can copy them into "My Dashboards" and customise any chart.{% endblock %}
+{% block step %}
+<div class="grid grid-3">
+  <a class="card" href="/dashboards?uid=arc-overview&product={{ product.slug }}"><h2>Agent overview →</h2><p class="muted">Adoption, latency, errors, tokens and error logs.</p></a>
+  <a class="card" href="/dashboards?uid=arc-finops&product={{ product.slug }}"><h2>FinOps →</h2><p class="muted">Spend by product, agent and model; cost per 1k calls.</p></a>
+  <a class="card" href="/dashboards?uid=arc-quality&product={{ product.slug }}"><h2>Quality &amp; compliance →</h2><p class="muted">Evaluation scores, drift, PII masked, guardrail events.</p></a>
+  <a class="card" href="/traces?product={{ product.id }}"><h2>Trace explorer →</h2><p class="muted">Every conversation, drill down into Langfuse.</p></a>
+  <a class="card" href="/agents?product={{ product.id }}"><h2>Agent registry →</h2><p class="muted">Agents discovered from telemetry - add owners and risk class.</p></a>
+  <a class="card" href="/products/{{ product.id }}"><h2>Product page →</h2><p class="muted">KPIs vs targets, keys, coverage.</p></a>
+</div>
+{% endblock %}

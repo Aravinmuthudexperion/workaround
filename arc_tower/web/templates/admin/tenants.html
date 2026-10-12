@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "tenants" %}
+{% block title %}Tenants{% endblock %}
+{% block crumbs %}Manage / Tenants{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Tenants</h1><div class="sub">A tenant is a client team or business unit. Each gets an isolated Grafana org, log stream and metric scope.</div></div></div>
+<div class="grid grid-3">
+  <div class="card span-2"><div class="table-wrap"><table>
+    <thead><tr><th>Tenant</th><th>ID</th><th class="num">Products</th><th class="num">Members</th><th>Grafana org</th><th>Created</th></tr></thead>
+    <tbody>
+    {% for t in ctx.tenants %}
+      <tr><td><strong>{{ t.name }}</strong><div class="faint">{{ t.description }}</div></td><td><code>{{ t.slug }}</code></td>
+        <td class="num">{{ t.products|length }}</td><td class="num">{{ t.memberships|length }}</td>
+        <td>{% if t.grafana_org_id %}<span class="badge ok">org {{ t.grafana_org_id }}</span>{% else %}<span class="badge warn">pending</span>{% endif %}</td>
+        <td class="muted">{{ t.created_at | ago }}</td></tr>
+    {% else %}<tr><td colspan="6" class="muted">No tenants yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div></div>
+  <form method="post" action="/admin/tenants" class="card">{{ m.csrf() }}
+    <h2>New tenant</h2>
+    <div class="field"><label for="tn">Name</label><input id="tn" type="text" name="name" placeholder="e.g. Retail Banking" required></div>
+    <div class="field"><label for="ts">ID <span class="faint">(optional)</span></label><input id="ts" type="text" name="slug" placeholder="retail-banking"><div class="help">Lower-case, used as a label on all telemetry. Cannot change later.</div></div>
+    <div class="field"><label for="td">Description</label><input id="td" type="text" name="description"></div>
+    <button class="btn primary">Create tenant</button>
+  </form>
+</div>
+{% endblock %}

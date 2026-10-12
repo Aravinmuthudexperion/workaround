@@ -1,0 +1,47 @@
+{% macro kpi_tile(v) -%}
+<div class="card kpi {{ 'breached' if v.breached }}" title="{{ v.kpi.description }}">
+  <div class="label"><span>{{ v.kpi.name }}</span>{% if v.breached %}<span class="badge bad plain">target</span>{% endif %}</div>
+  <div class="value">{{ v.value | fmt(v.kpi.unit) }}</div>
+  <div class="target">{% if v.target %}target {{ 'max' if v.kpi.breach == 'above' else 'min' }} {{ v.target.threshold | fmt(v.kpi.unit) }}{% else %}&nbsp;{% endif %}</div>
+</div>
+{%- endmacro %}
+
+{% macro product_badge(p) -%}
+{% if p.status == 'live' %}<span class="badge ok">live</span>
+{% elif p.status == 'paused' %}<span class="badge warn">paused</span>
+{% else %}<span class="badge info">onboarding · step {{ p.onboarding_step }}/6</span>{% endif %}
+{%- endmacro %}
+
+{% macro agent_badge(status) -%}
+{% if status == 'active' %}<span class="badge ok">active</span>
+{% elif status == 'inactive' %}<span class="badge warn">inactive</span>
+{% else %}<span class="badge">registered</span>{% endif %}
+{%- endmacro %}
+
+{% macro maturity_badge(m) -%}
+{% if m == 'ga' %}<span class="badge ok plain">available</span>
+{% elif m == 'beta' %}<span class="badge warn plain">beta</span>
+{% else %}<span class="badge plain">planned</span>{% endif %}
+{%- endmacro %}
+
+{% macro code_block(id, text) -%}
+<div class="code-wrap"><pre class="code" id="{{ id }}">{{ text }}</pre><button type="button" class="copy-btn" data-copy="{{ id }}">Copy</button></div>
+{%- endmacro %}
+
+{% macro csrf() -%}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{%- endmacro %}
+
+{% macro chart_grid(layout, src) -%}
+<div class="grid grid-2 mt" data-charts-src="{{ src }}">
+  {% for c in layout.charts %}
+  <div class="card"><div class="card-head"><h2>{{ c.title }}</h2></div>
+    <div class="chart"><canvas data-chart="{{ c.id }}" data-type="{{ c.kind }}" aria-label="{{ c.title }}"></canvas></div></div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro layout_bar(page, source, back) -%}
+<div class="inline faint" style="justify-content:flex-end">
+  <span>Layout: {{ {"personal": "yours", "organisation": "organisation default", "built-in": "standard"}[source] }}</span>
+  <a class="btn small" href="/customise/{{ page }}?back={{ back | urlencode }}">✎ Customise</a>
+</div>
+{%- endmacro %}

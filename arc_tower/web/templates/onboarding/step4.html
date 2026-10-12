@@ -1,0 +1,26 @@
+{% extends "onboarding/_wizard.html" %}
+{% import "partials/macros.html" as m with context %}
+{% block heading %}KPIs &amp; targets · {{ product.name }}{% endblock %}
+{% block intro %}Every standard KPI is tracked automatically. Set a target to show it on dashboards and, optionally, alert when it is breached.{% endblock %}
+{% block step %}
+<form method="post" action="/products/{{ product.id }}/onboard/4">{{ m.csrf() }}
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>KPI</th><th>Category</th><th>Target</th><th>Alert</th><th>Severity</th></tr></thead>
+  <tbody>
+  {% for k in catalog %}{% set t = targets.get(k.key) %}
+    <tr>
+      <td><strong>{{ k.name }}</strong><div class="faint">{{ k.description }}</div></td>
+      <td class="muted">{{ k.category }}</td>
+      <td><div class="inline"><span class="faint">{{ 'max' if k.breach == 'above' else 'min' }}</span>
+        <input type="number" step="any" name="threshold_{{ k.key }}" value="{{ t.threshold if t else '' }}" placeholder="{{ k.default_threshold if k.default_threshold is not none else 'none' }}" style="max-width:130px" aria-label="Target for {{ k.name }}">
+        <span class="faint">{{ k.unit }}</span></div></td>
+      <td>{% if k.alertable %}<label class="check"><input type="checkbox" name="alert_{{ k.key }}" {{ 'checked' if (t and t.alert_enabled) or not t }}> alert</label>{% else %}<span class="faint">–</span>{% endif %}</td>
+      <td><select name="severity_{{ k.key }}" style="width:auto">{% for s in ["warning", "critical", "info"] %}<option {{ 'selected' if t and t.severity == s }}>{{ s }}</option>{% endfor %}</select></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+<p class="faint mt">Leave a target empty to track the KPI without a target. Tip: an "Estimated cost" target over 24h works as a daily budget.</p>
+{% if can_edit %}<div class="actions mt"><button class="btn primary">Save targets &amp; continue</button></div>{% endif %}
+</form>
+{% endblock %}

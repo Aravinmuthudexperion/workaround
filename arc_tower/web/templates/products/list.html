@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "products" %}
+{% block title %}Products{% endblock %}
+{% block crumbs %}Products{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Products</h1><div class="sub">Every AI application onboarded to ARC Tower, with how its telemetry arrives.</div></div>
+  <a class="btn primary" href="/onboard">Onboard a product</a>
+</div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Product</th><th>Tenant</th><th>Connector</th><th>Ingest</th><th>Status</th><th class="num">Agents</th><th>First data</th><th>Last data</th></tr></thead>
+  <tbody>
+  {% for t, p in rows %}
+    <tr>
+      <td><a href="/products/{{ p.id }}"><strong>{{ p.name }}</strong></a><div class="faint">{{ p.slug }} · {{ p.environment }}</div></td>
+      <td class="muted">{{ t.name }}</td>
+      <td>{{ catalog[p.connector_type].name if p.connector_type in catalog else p.connector_type }}</td>
+      <td><span class="badge accent plain">{{ p.ingest_mode }}</span></td>
+      <td>{{ m.product_badge(p) }}</td>
+      <td class="num">{{ p.agents|length }}</td>
+      <td class="muted">{{ p.first_seen_at | ago }}</td>
+      <td class="muted">{{ p.last_seen_at | ago }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">No products yet - <a href="/onboard">onboard one</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

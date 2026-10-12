@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "agents" %}
+{% block title %}{{ agent.label }}{% endblock %}
+{% block crumbs %}<a href="/agents">Agent registry</a> / {{ agent.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ agent.label }} {{ m.agent_badge(status) }}</h1>
+    <div class="sub"><a href="/products/{{ agent.product.id }}">{{ agent.product.name }}</a> · {{ agent.product.tenant.name }} ·
+      service <code>{{ agent.service_name }}</code>{% if agent.agent_name %} · agent <code>{{ agent.agent_name }}</code>{% endif %} ·
+      platform {{ agent.platform }} · last seen {{ agent.last_seen_at | ago }}</div>
+  </div>
+  <div class="actions">
+    <div class="tabs" style="margin:0">{% for w in ["1h", "24h", "7d", "30d"] %}<a href="?window={{ w }}" class="{{ 'active' if window == w }}">{{ w }}</a>{% endfor %}</div>
+    <a class="btn" href="{{ grafana }}" target="_blank" rel="noopener">Grafana ↗</a>
+    <a class="btn" href="/traces?product={{ agent.product.id }}">Traces</a>
+  </div>
+</div>
+
+{{ m.layout_bar("agent", layout_source, "/agents/" ~ agent.id) }}
+<div class="grid grid-6 mt">
+  {% for v in tiles %}{{ m.kpi_tile(v) }}{% endfor %}
+</div>
+{{ m.chart_grid(layout, "/data/layout/agent?agent=" ~ agent.id ~ "&range=" ~ ('7d' if window in ('7d','30d') else ('6h' if window == '1h' else '24h'))) }}
+
+<div class="grid grid-2 mt">
+  <div class="card">
+    <h2>Registry details</h2>
+    <table><tbody>
+      <tr><td class="muted">Owner</td><td>{{ agent.owner or "–" }}</td></tr>
+      <tr><td class="muted">Purpose</td><td>{{ agent.purpose or "–" }}</td></tr>
+      <tr><td class="muted">Risk class</td><td><span class="badge {{ 'bad' if agent.risk_class == 'high' else ('warn' if agent.risk_class == 'limited' else '') }} plain">{{ agent.risk_class }}</span></td></tr>
+      <tr><td class="muted">Models seen</td><td>{{ (agent.models or []) | join(", ") or "–" }}</td></tr>
+      <tr><td class="muted">First seen</td><td>{{ agent.first_seen_at | ago }}</td></tr>
+      <tr><td class="muted">Discovered from telemetry</td><td>{{ "yes" if agent.discovered else "registered manually" }}</td></tr>
+    </tbody></table>
+  </div>
+  {% if can_edit %}
+  <form method="post" action="/agents/{{ agent.id }}" class="card">{{ m.csrf() }}
+    <h2>Edit</h2>
+    <div class="grid grid-2">
+      <div class="field"><label for="ad-d">Display name</label><input id="ad-d" type="text" name="display_name" value="{{ agent.display_name }}"></div>
+      <div class="field"><label for="ad-o">Owner</label><input id="ad-o" type="text" name="owner" value="{{ agent.owner }}" placeholder="team or e-mail"></div>
+    </div>
+    <div class="field"><label for="ad-p">Purpose</label><input id="ad-p" type="text" name="purpose" value="{{ agent.purpose }}"></div>
+    <div class="field"><label for="ad-r">Risk class</label><select id="ad-r" name="risk_class">{% for r in risk_classes %}<option {{ 'selected' if agent.risk_class == r }}>{{ r }}</option>{% endfor %}</select></div>
+    <button class="btn primary">Save</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

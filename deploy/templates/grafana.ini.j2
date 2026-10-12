@@ -1,0 +1,64 @@
+; Grafana - ARC Tower dashboards and alerting. Rendered by `arc_tower.infra.render`.
+; Served under /grafana/ through the ARC app, which signs users in with auth-proxy headers.
+
+[paths]
+data = {{ paths.grafana }}
+logs = {{ paths.grafana }}/logs
+plugins = {{ paths.grafana }}/plugins
+provisioning = {{ paths.grafana_provisioning }}
+
+[server]
+http_addr = 127.0.0.1
+http_port = {{ ports.grafana }}
+root_url = {{ arc_base_url }}/grafana/
+serve_from_sub_path = true
+
+[security]
+admin_user = {{ grafana.admin_user }}
+admin_password = {{ grafana.admin_password }}
+disable_initial_admin_change_password = true
+allow_embedding = true
+cookie_samesite = lax
+
+[auth.proxy]
+enabled = true
+header_name = X-WEBAUTH-USER
+header_property = username
+auto_sign_up = true
+headers = Name:X-WEBAUTH-NAME Email:X-WEBAUTH-EMAIL
+whitelist = 127.0.0.1, ::1
+enable_login_token = false
+
+[users]
+allow_sign_up = false
+allow_org_create = false
+auto_assign_org = true
+auto_assign_org_id = 1
+auto_assign_org_role = None
+default_theme = system
+
+[auth.anonymous]
+enabled = false
+
+[analytics]
+reporting_enabled = false
+check_for_updates = false
+check_for_plugin_updates = false
+feedback_links_enabled = false
+
+[news]
+news_feed_enabled = false
+
+[plugins]
+; Offline-friendly: do not download plugins at start-up.
+preinstall_disabled = true
+
+[live]
+max_connections = 0
+
+[unified_alerting]
+enabled = true
+
+[log]
+mode = console
+level = warn

@@ -1,0 +1,60 @@
+# Loki - ARC Tower log/event store. Rendered by `arc_tower.infra.render`.
+# Multi-tenant: every write carries X-Scope-OrgID = tenant slug (set by the collector).
+
+auth_enabled: true
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: {{ ports.loki }}
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: {{ ports.loki_grpc }}
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: {{ paths.loki }}
+  storage:
+    filesystem:
+      chunks_directory: {{ paths.loki }}/chunks
+      rules_directory: {{ paths.loki }}/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  allow_structured_metadata: true
+  volume_enabled: true
+  retention_period: 720h
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes: [arc.tenant.id, arc.product.id, arc.platform]
+
+querier:
+  multi_tenant_queries_enabled: true
+
+compactor:
+  working_directory: {{ paths.loki }}/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: {{ paths.loki }}/rules
+
+analytics:
+  reporting_enabled: false

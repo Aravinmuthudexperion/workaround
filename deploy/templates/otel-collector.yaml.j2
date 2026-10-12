@@ -1,0 +1,172 @@
+# OpenTelemetry Collector - ARC Tower gateway. Rendered by `arc_tower.infra.render`.
+# Only the ingest proxy, connectors and intelligence jobs send here (127.0.0.1).
+# Each request carries x-arc-tenant / x-arc-product / x-langfuse-auth metadata headers.
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:{{ ports.collector_health }}
+{% if langfuse.enabled %}
+  headers_setter/langfuse:
+    headers:
+      - action: upsert
+        key: Authorization
+        from_context: x-langfuse-auth
+        default_value: "{{ langfuse.default_auth }}"
+      - action: upsert
+        key: x-langfuse-ingestion-version
+        value: "4"
+{% endif %}
+  headers_setter/loki:
+    headers:
+      - action: upsert
+        key: X-Scope-OrgID
+        from_context: x-arc-tenant
+        default_value: arc-platform
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:{{ ports.collector_otlp }}
+        include_metadata: true
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # Map vendor attribute names (OpenInference, OpenLLMetry) onto the OTel GenAI conventions.
+  transform/genai:
+    error_mode: ignore
+    trace_statements:
+      - set(span.attributes["gen_ai.request.model"], span.attributes["gen_ai.response.model"]) where span.attributes["gen_ai.request.model"] == nil and span.attributes["gen_ai.response.model"] != nil
+      - set(span.attributes["gen_ai.request.model"], span.attributes["llm.model_name"]) where span.attributes["gen_ai.request.model"] == nil and span.attributes["llm.model_name"] != nil
+      - set(span.attributes["gen_ai.usage.input_tokens"], span.attributes["gen_ai.usage.prompt_tokens"]) where span.attributes["gen_ai.usage.input_tokens"] == nil and span.attributes["gen_ai.usage.prompt_tokens"] != nil
+      - set(span.attributes["gen_ai.usage.output_tokens"], span.attributes["gen_ai.usage.completion_tokens"]) where span.attributes["gen_ai.usage.output_tokens"] == nil and span.attributes["gen_ai.usage.completion_tokens"] != nil
+      - set(span.attributes["gen_ai.usage.input_tokens"], span.attributes["llm.token_count.prompt"]) where span.attributes["gen_ai.usage.input_tokens"] == nil and span.attributes["llm.token_count.prompt"] != nil
+      - set(span.attributes["gen_ai.usage.output_tokens"], span.attributes["llm.token_count.completion"]) where span.attributes["gen_ai.usage.output_tokens"] == nil and span.attributes["llm.token_count.completion"] != nil
+
+  # Mask PII in every attribute value before anything is stored.
+  # `summary: info` adds redaction.masked.count to each span, which feeds the PII metric below.
+  redaction/pii:
+    allow_all_keys: true
+    ignored_keys: [arc.tenant.id, arc.product.id, arc.service.name, langfuse.trace.tags]
+    blocked_values:
+      - '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'   # e-mail address
+      - '\b(?:\d[ -]?){13,16}\b'                           # payment card number
+      - '\b[2-9]\d{3}\s\d{4}\s\d{4}\b'                     # Aadhaar number
+      - '\b[A-Z]{5}\d{4}[A-Z]\b'                           # PAN
+      - '\b\d{3}-\d{2}-\d{4}\b'                            # US SSN
+    summary: info
+
+  batch:
+    send_batch_size: 512
+    timeout: 2s
+    metadata_keys: [x-arc-tenant, x-arc-product, x-langfuse-auth]
+    metadata_cardinality_limit: 1000
+
+  batch/derived:
+    timeout: 5s
+
+  delta_to_cumulative: {}
+
+connectors:
+  # RED metrics per tenant / product / service / model from 100% of spans.
+  span_metrics:
+    namespace: arc
+    histogram:
+      unit: ms
+      explicit:
+        buckets: [25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s, 60s]
+    dimensions:
+      - name: arc.tenant.id
+      - name: arc.product.id
+      - name: arc.service.name
+      - name: gen_ai.request.model
+      - name: gen_ai.operation.name
+      - name: gen_ai.agent.name
+    exclude_dimensions: [span.kind]
+    metrics_flush_interval: 15s
+    metrics_expiration: 1h
+
+  # Token and PII counters: sums of numeric span attributes, grouped by tenant / product / service / model.
+  signal_to_metrics:
+    spans:
+      - name: arc.gen_ai.input_tokens
+        description: LLM input (prompt) tokens
+        unit: "{token}"
+        conditions:
+          - attributes["gen_ai.usage.input_tokens"] != nil
+        attributes: &token_dims
+          - key: arc.tenant.id
+          - key: arc.product.id
+          - key: arc.service.name
+          - key: gen_ai.request.model
+            default_value: unknown
+          - key: gen_ai.agent.name
+            default_value: none
+        sum:
+          value: Int(attributes["gen_ai.usage.input_tokens"])
+      - name: arc.gen_ai.output_tokens
+        description: LLM output (completion) tokens
+        unit: "{token}"
+        conditions:
+          - attributes["gen_ai.usage.output_tokens"] != nil
+        attributes: *token_dims
+        sum:
+          value: Int(attributes["gen_ai.usage.output_tokens"])
+      - name: arc.pii.masked
+        description: PII values masked by the gateway before storage
+        unit: "{value}"
+        conditions:
+          - attributes["redaction.masked.count"] != nil
+        attributes:
+          - key: arc.tenant.id
+          - key: arc.product.id
+          - key: arc.service.name
+        sum:
+          value: Int(attributes["redaction.masked.count"])
+
+exporters:
+{% if langfuse.enabled %}
+  otlp_http/langfuse:
+    traces_endpoint: {{ langfuse.host }}/api/public/otel/v1/traces
+    auth:
+      authenticator: headers_setter/langfuse
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 120s
+{% endif %}
+  otlp_http/prometheus:
+    metrics_endpoint: http://127.0.0.1:{{ ports.prometheus }}/api/v1/otlp/v1/metrics
+  otlp_http/loki:
+    logs_endpoint: http://127.0.0.1:{{ ports.loki }}/otlp/v1/logs
+    auth:
+      authenticator: headers_setter/loki
+
+service:
+  extensions: [health_check{% if langfuse.enabled %}, headers_setter/langfuse{% endif %}, headers_setter/loki]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/genai, redaction/pii, batch]
+      exporters: [{% if langfuse.enabled %}otlp_http/langfuse, {% endif %}span_metrics, signal_to_metrics]
+    metrics/derived:
+      receivers: [span_metrics, signal_to_metrics]
+      processors: [delta_to_cumulative, batch/derived]
+      exporters: [otlp_http/prometheus]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, delta_to_cumulative, batch]
+      exporters: [otlp_http/prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction/pii, batch]
+      exporters: [otlp_http/loki]

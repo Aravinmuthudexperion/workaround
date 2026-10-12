@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "dashboards" %}
+{% block title %}Dashboards{% endblock %}
+{% block crumbs %}Dashboards{% endblock %}
+{% set pq = ("&product=" ~ product) if product else "" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Dashboards</h1><div class="sub">
+    {% if view == "new" %}Build a new dashboard: <strong>Add visualization</strong> or <strong>Import from library</strong>, then <strong>Save dashboard</strong> - it is stored in My Dashboards.
+    {% elif view == "library" %}Ready-made panels. Add one to your dashboard with <strong>Add &rsaquo; Import from library</strong>.
+    {% elif editable %}Your dashboard - click <strong>Edit</strong> to change panels, queries and layout, then <strong>Save dashboard</strong>.
+    {% elif can_edit %}Standard dashboards are read-only and reset on every ARC update. Click <strong>Customise</strong> to get your own editable copy.
+    {% else %}Ask a tenant editor to build custom dashboards.{% endif %}
+  </div></div>
+  <div class="actions">
+    {% if can_edit %}
+      {% if is_standard %}<form method="post" action="/dashboards/{{ selected }}/customise{% if product %}?product={{ product }}{% endif %}" style="display:inline">{{ m.csrf() }}<button class="btn primary">Customise</button></form>{% endif %}
+      <a class="btn{{ ' primary' if not is_standard }}" href="/dashboards?view=new{{ pq }}">New dashboard</a>
+      <a class="btn" href="/dashboards?view=library{{ pq }}">Panel library</a>
+    {% endif %}
+    <a class="btn" href="{{ embed | replace('&kiosk', '') }}" target="_blank" rel="noopener">Open in Grafana ↗</a>
+  </div>
+</div>
+<div class="tabs">
+  {% for uid, title in standard %}<a href="/dashboards?uid={{ uid }}{{ pq }}" class="{{ 'active' if selected == uid }}">{{ title }}</a>{% endfor %}
+  {% for d in mine %}<a href="/dashboards?uid={{ d.uid }}{{ pq }}" class="{{ 'active' if selected == d.uid }}" title="My dashboard - editable">★ {{ d.title }}</a>{% endfor %}
+  {% if view == "new" %}<a class="active">+ New dashboard</a>{% elif view == "library" %}<a class="active">Panel library</a>{% endif %}
+</div>
+<iframe class="embed{{ ' embed-edit' if editable }}" src="{{ embed }}" title="Grafana dashboard" loading="lazy"></iframe>
+{% endblock %}

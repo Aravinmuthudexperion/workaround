@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "account" %}
+{% block title %}API tokens{% endblock %}
+{% block crumbs %}Account / API tokens{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>API tokens</h1><div class="sub">Use the REST API to pull KPIs, agents and traces into other tools (Power BI, ServiceNow, scripts). Tokens have your access rights.</div></div>
+  <a class="btn" href="/api/docs" target="_blank" rel="noopener">API docs ↗</a></div>
+{% if new_token %}
+<div class="callout warn"><strong>Copy the token now - it is shown only once.</strong><div class="secret mt" id="tok">{{ new_token }}</div>
+  <button class="btn small mt" type="button" data-copy="tok">Copy</button></div>
+{{ m.code_block("curl", "curl -H \"Authorization: Bearer " ~ new_token ~ "\" " ~ settings.base_url ~ "/api/v1/products") }}
+{% endif %}
+<div class="grid grid-3 mt">
+  <div class="card span-2"><table>
+    <thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>
+    {% for t in user.api_tokens %}
+      <tr><td>{{ t.name }}</td><td><code>{{ t.hint }}</code></td><td class="muted">{{ t.created_at | ago }}</td><td class="muted">{{ t.last_used_at | ago }}</td>
+        <td>{% if t.revoked_at %}<span class="badge">revoked</span>{% else %}<form method="post" action="/account/tokens/{{ t.id }}/revoke">{{ m.csrf() }}<button class="btn small danger">Revoke</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">No tokens yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <form method="post" action="/account/tokens" class="card">{{ m.csrf() }}
+    <h2>New token</h2>
+    <div class="field"><label for="tokname">Name</label><input id="tokname" type="text" name="name" placeholder="power-bi" required></div>
+    <button class="btn primary">Create token</button>
+  </form>
+</div>
+{% endblock %}

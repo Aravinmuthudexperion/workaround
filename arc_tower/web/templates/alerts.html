@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "alerts" %}
+{% block title %}Alerts{% endblock %}
+{% block crumbs %}Alerts{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Alerts</h1><div class="sub">Rules come from KPI targets (onboarding step 4) and are evaluated by Grafana Alerting every minute.</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Firing now</h2><span class="badge {{ 'bad' if firing else 'ok' }}">{{ firing|length }}</span></div>
+  <table><tbody>
+  {% for tenant, a in firing %}
+    <tr><td><strong>{{ a.labels.alertname }}</strong><div class="faint">{{ a.annotations.summary }}</div></td>
+      <td class="muted">{{ tenant.name }}</td>
+      <td><span class="badge {{ 'bad' if a.labels.severity == 'critical' else 'warn' }}">{{ a.state }}</span></td>
+      <td class="faint">{{ (a.activeAt or '')[:19].replace('T', ' ') }}</td></tr>
+  {% else %}<tr><td class="muted">Nothing firing. ✓</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+
+<div class="grid grid-2 mt">
+  <div class="card">
+    <h2>Targets &amp; rules</h2>
+    <table><thead><tr><th>Product</th><th>KPI</th><th>Target</th><th>Alert</th><th></th></tr></thead><tbody>
+    {% for p, t in targets %}
+      <tr><td><a href="/products/{{ p.id }}">{{ p.name }}</a></td><td>{{ t.kpi.name }}</td>
+        <td>{{ '>' if t.kpi.breach == 'above' else '<' }} {{ t.threshold | fmt(t.kpi.unit) }}</td>
+        <td>{% if t.grafana_rule_uid and t.alert_enabled %}<span class="badge ok">active</span>{% elif t.alert_enabled %}<span class="badge warn">not synced</span>{% else %}<span class="badge">off</span>{% endif %}</td>
+        <td>{% if loop.first or targets[loop.index0 - 1][0].id != p.id %}<form method="post" action="/alerts/sync/{{ p.id }}">{{ m.csrf() }}<button class="btn small">Sync</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">No targets yet.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>Delivery channels</h2>
+    <table><tbody>
+    {% for tenant, c in channels %}<tr><td>{{ c.name }}</td><td class="muted">{{ c.type }}</td><td class="faint">{{ c.settings.target }}</td><td class="muted">{{ tenant.name }}</td></tr>
+    {% else %}<tr><td class="muted">No channels yet - alerts are visible here and in Grafana only.</td></tr>{% endfor %}
+    </tbody></table>
+    {% if ctx.current and ctx.can_edit %}
+    <form method="post" action="/alerts/channels" class="mt">{{ m.csrf() }}
+      <input type="hidden" name="tenant_id" value="{{ ctx.current.id }}">
+      <div class="grid grid-2">
+        <div class="field"><label for="ct">Type</label><select id="ct" name="channel_type">{% for t in channel_types %}<option>{{ t }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="cn">Name</label><input id="cn" type="text" name="name"></div>
+      </div>
+      <div class="field"><label for="ctg">Address or webhook URL</label><input id="ctg" type="text" name="target" required></div>
+      <button class="btn">Add channel</button>
+    </form>
+    {% elif not ctx.current %}<p class="faint mt">Select a tenant to add channels.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

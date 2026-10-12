@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · ARC Tower</title>
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version }}">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="brand"><span class="brand-mark">A</span><span>ARC Tower<small>Observability &amp; traceability for every AI agent</small></span></div>
+    {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="field"><label for="email">E-mail</label>
+        <input id="email" type="email" name="email" value="{{ email or '' }}" autocomplete="username" required autofocus></div>
+      <div class="field"><label for="password">Password</label>
+        <input id="password" type="password" name="password" autocomplete="current-password" required></div>
+      <button class="btn primary" style="width:100%">Sign in</button>
+    </form>
+    {% if oidc %}
+    <hr><a class="btn" style="width:100%" href="/auth/oidc/login">Sign in with single sign-on</a>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

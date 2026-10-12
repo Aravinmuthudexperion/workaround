@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}ARC Tower{% endblock %} · ARC Tower</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235c7cfa'/%3E%3Cpath d='M9 23 16 8l7 15' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version }}">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/vendor/chart.umd.min.js" defer></script>
+  <script src="/static/js/app.js?v={{ asset_version }}" defer></script>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav" aria-label="Main">
+    <div class="brand"><span class="brand-mark">A</span><span>ARC Tower<small>Agent observability</small></span></div>
+    {% set scope = ctx.scope %}
+    <a href="/" class="{{ 'active' if nav == 'overview' }}"><span class="icon">◉</span>Overview</a>
+    {% if scope.all_tenants %}
+    <a href="/executive" class="{{ 'active' if nav == 'executive' }}"><span class="icon">◆</span>Executive view</a>
+    {% endif %}
+    <div class="nav-section">Onboard</div>
+    <a href="/products" class="{{ 'active' if nav == 'products' }}"><span class="icon">▦</span>Products</a>
+    <a href="/onboard" class="{{ 'active' if nav == 'onboard' }}"><span class="icon">＋</span>Onboard a product</a>
+    <a href="/connectors" class="{{ 'active' if nav == 'connectors' }}"><span class="icon">⇄</span>Connectors</a>
+    <div class="nav-section">Observe</div>
+    <a href="/agents" class="{{ 'active' if nav == 'agents' }}"><span class="icon">◎</span>Agent registry</a>
+    <a href="/dashboards" class="{{ 'active' if nav == 'dashboards' }}"><span class="icon">▤</span>Dashboards</a>
+    <a href="/traces" class="{{ 'active' if nav == 'traces' }}"><span class="icon">≋</span>Traces</a>
+    <a href="/alerts" class="{{ 'active' if nav == 'alerts' }}"><span class="icon">⚑</span>Alerts</a>
+    <div class="nav-section">Manage</div>
+    {% if scope.is_platform_admin %}
+    <a href="/admin/tenants" class="{{ 'active' if nav == 'tenants' }}"><span class="icon">▣</span>Tenants</a>
+    <a href="/admin/users" class="{{ 'active' if nav == 'users' }}"><span class="icon">☺</span>Users</a>
+    <a href="/admin/system" class="{{ 'active' if nav == 'system' }}"><span class="icon">⚙</span>System health</a>
+    {% endif %}
+    <a href="/admin/audit" class="{{ 'active' if nav == 'audit' }}"><span class="icon">☰</span>Audit log</a>
+    <a href="/account" class="{{ 'active' if nav == 'account' }}"><span class="icon">⌘</span>API tokens</a>
+    <a href="/api/docs" target="_blank" rel="noopener"><span class="icon">{}</span>REST API docs</a>
+    <div class="nav-foot">
+      <div class="who">{{ scope.email }}</div>
+      <div class="faint">{% if scope.is_platform_admin %}Platform admin{% elif scope.is_executive %}Executive{% else %}Tenant user{% endif %}</div>
+      <form method="post" action="/logout" class="mt"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>Sign out</button></form>
+    </div>
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="faint">{% block crumbs %}{% endblock %}</div>
+      <form method="post" action="/tenant/select">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="back" value="{{ request.url.path }}">
+        <label for="tenant-switch" class="faint" style="margin:0">Tenant</label>
+        <select id="tenant-switch" name="tenant" onchange="this.form.submit()" style="width:auto;min-width:200px">
+          {% if ctx.scope.all_tenants or ctx.tenants|length > 1 %}
+          <option value="all" {{ 'selected' if not ctx.current }}>All my tenants ({{ ctx.tenants|length }})</option>
+          {% endif %}
+          {% for t in ctx.tenants %}
+          <option value="{{ t.id }}" {{ 'selected' if ctx.current and ctx.current.id == t.id }}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <noscript><button class="btn small">Switch</button></noscript>
+      </form>
+    </header>
+    <main class="content">
+      {% for f in flashes %}<div class="flash {{ f.level }}" role="status">{{ f.message }}</div>{% endfor %}
+      {% if not ctx.tenants %}
+        {% if ctx.scope.is_platform_admin %}
+        <div class="callout">Getting started: <a href="/admin/tenants">create your first tenant</a> (a client team), <a href="/admin/users">add its users</a>, then <a href="/onboard">onboard a product</a>.</div>
+        {% else %}
+        <div class="callout warn">You are not a member of any tenant yet. Ask a platform admin to add you.</div>
+        {% endif %}
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+</body>
+</html>

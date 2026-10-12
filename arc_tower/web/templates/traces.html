@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set nav = "traces" %}
+{% block title %}Traces{% endblock %}
+{% block crumbs %}Traces{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Trace explorer</h1><div class="sub">Every agent run, from Langfuse. Open a trace to see each LLM call, tool call, prompt, output, tokens and cost.</div></div>
+</div>
+<form method="get" class="card inline mb">
+  <label for="tp" style="margin:0">Product</label>
+  <select id="tp" name="product" onchange="this.form.submit()">{% for p in products %}<option value="{{ p.id }}" {{ 'selected' if selected and selected.id == p.id }}>{{ p.tenant.name }} · {{ p.name }}</option>{% endfor %}</select>
+  <input type="text" name="user" value="{{ user }}" placeholder="user id" aria-label="Filter by user id">
+  <input type="text" name="session_id" value="{{ session_id }}" placeholder="session id" aria-label="Filter by session id">
+  <button class="btn">Filter</button>
+</form>
+{% if not selected %}
+  <div class="callout">No products in this view yet.</div>
+{% elif result.error %}
+  <div class="callout warn">{{ result.error }}</div>
+{% else %}
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Request</th><th>Started</th><th>User</th><th>Session</th><th class="num">Latency</th><th class="num">Cost</th><th></th></tr></thead>
+  <tbody>
+  {% for t in result.rows %}
+    <tr><td><strong>{{ t.name }}</strong>{% if t.failed %} <span class="badge bad plain">error</span>{% endif %}<div class="faint"><code>{{ t.id[:16] }}…</code></div></td>
+      <td class="muted">{{ t.timestamp[:19].replace('T', ' ') }}</td>
+      <td class="faint">{{ t.user_id or "–" }}</td><td class="faint">{{ t.session_id or "–" }}</td>
+      <td class="num">{{ '%.2fs' % t.latency_s if t.latency_s is not none else "–" }}</td>
+      <td class="num">{{ t.cost_usd | money(4) if t.cost_usd is not none else "–" }}</td>
+      <td><a class="btn small" href="{{ t.url }}" target="_blank" rel="noopener">Open ↗</a></td></tr>
+  {% else %}<tr><td colspan="7" class="muted">No traces yet for this filter.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+<div class="inline mt">
+  {% if not first_page %}<a class="btn small" href="?product={{ selected.id }}&user={{ user }}&session_id={{ session_id }}">« Newest</a>{% endif %}
+  {% if result.next_cursor %}<a class="btn small" href="?product={{ selected.id }}&cursor={{ result.next_cursor | urlencode }}&user={{ user }}&session_id={{ session_id }}">Older →</a>{% endif %}
+  <span class="faint">Langfuse Observations API v2 · newest first</span>
+</div></div>
+{% endif %}
+{% endblock %}

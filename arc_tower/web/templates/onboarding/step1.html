@@ -1,0 +1,55 @@
+{% extends "onboarding/_wizard.html" %}
+{% import "partials/macros.html" as m with context %}
+{% block heading %}Onboard an AI product{% endblock %}
+{% block intro %}Pick where the product's agents run. ARC Tower never needs access to your code - push connectors use standard OpenTelemetry env variables, pull connectors read the platform's own monitoring.{% endblock %}
+{% block step %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/onboard">{{ m.csrf() }}
+  <div class="grid grid-3">
+    <div class="card span-2">
+      <h2>1 · Identify</h2>
+      <div class="grid grid-2">
+        <div class="field"><label for="tenant_id">Tenant</label>
+          <select id="tenant_id" name="tenant_id" required>
+            {% for t in ctx.tenants if ctx.scope.can_edit(t.id) %}
+            <option value="{{ t.id }}" {{ 'selected' if (form and form.tenant_id == t.id) or (not form and ctx.current and ctx.current.id == t.id) }}>{{ t.name }}</option>
+            {% else %}<option value="" disabled selected>{{ 'No tenants yet' if not ctx.tenants else 'You need editor rights on a tenant' }}</option>{% endfor %}
+          </select>
+          {% if not ctx.tenants %}<div class="help">{% if ctx.scope.is_platform_admin %}<a href="/admin/tenants">Create a tenant first</a>, then come back here.{% else %}Ask a platform admin to add you to a tenant.{% endif %}</div>{% endif %}
+          </div>
+        <div class="field"><label for="name">Product name</label>
+          <input id="name" type="text" name="name" value="{{ form.name if form else '' }}" placeholder="e.g. Claims Assistant" required></div>
+        <div class="field"><label for="environment">Environment</label>
+          <select id="environment" name="environment">{% for e in ["prod", "staging", "dev"] %}<option {{ 'selected' if form and form.environment == e }}>{{ e }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="description">Description</label>
+          <input id="description" type="text" name="description" value="{{ form.description if form else '' }}" placeholder="What the product does, who uses it"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Trace store</h2>
+      <label class="check"><input type="radio" name="langfuse_mode" value="shared" checked> Shared Langfuse project (tagged per product)</label>
+      <label class="check mt"><input type="radio" name="langfuse_mode" value="managed" {{ 'disabled' if not managed_available }}> Dedicated project, created automatically</label>
+      <p class="faint mt">{% if managed_available %}Uses the Langfuse organization key.{% else %}Needs a Langfuse Enterprise organization key. You can still add a product's own project keys later.{% endif %}</p>
+    </div>
+  </div>
+
+  <h2 class="mt-lg">2 · Connect - where do the agents run?</h2>
+  {% for category, items in categories.items() %}
+    <h3 class="mt">{{ category }}</h3>
+    <div class="grid grid-3">
+    {% for c in items %}
+      <label class="choice {{ 'disabled' if c.maturity == 'planned' }}">
+        <input type="radio" name="connector_type" value="{{ c.key }}" {{ 'disabled' if c.maturity == 'planned' }}
+               {{ 'checked' if (form and form.connector_type == c.key) or (not form and c.key == 'otel_custom') }} required>
+        <div class="card">
+          <div class="card-head"><h3 style="margin:0">{{ c.name }}</h3>{{ m.maturity_badge(c.maturity) }}</div>
+          <p class="muted" style="margin:0">{{ c.summary }}</p>
+          <p class="faint mt" style="margin-bottom:0"><span class="badge accent plain">{{ c.mode.value }}</span></p>
+        </div>
+      </label>
+    {% endfor %}
+    </div>
+  {% endfor %}
+  <div class="actions mt-lg"><button class="btn primary">Create product &amp; continue</button></div>
+</form>
+{% endblock %}

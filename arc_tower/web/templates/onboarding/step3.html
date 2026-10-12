@@ -1,0 +1,28 @@
+{% extends "onboarding/_wizard.html" %}
+{% import "partials/macros.html" as m with context %}
+{% block heading %}Map &amp; standardise · {{ product.name }}{% endblock %}
+{% block intro %}ARC Tower maps common attribute names (OpenInference, OpenLLMetry) onto the OpenTelemetry GenAI conventions automatically. This shows which standard fields your telemetry carries.{% endblock %}
+{% block step %}
+<div class="grid grid-3">
+  <div class="card">
+    <h2>Coverage score</h2>
+    <div class="score">{{ coverage_score }}%</div>
+    <p class="faint">Weighted by importance: model and token fields drive cost and usage KPIs.</p>
+    <p class="muted">{{ product.coverage.get('llm_spans', 0) }} LLM spans of {{ product.coverage.get('spans', 0) }} spans analysed.</p>
+    {% if not product.coverage.get('spans') %}<div class="callout warn">No data yet - go back to step 2 and send some traffic.</div>{% endif %}
+  </div>
+  <div class="card span-2">
+    <h2>Standard fields</h2>
+    <table><thead><tr><th>Field</th><th>Coverage</th><th class="num">%</th><th>Why it matters</th></tr></thead><tbody>
+    {% for r in coverage_rows %}
+      <tr><td>{{ r.label }}<div class="faint"><code>{{ r.field }}</code></div></td>
+        <td style="width:26%"><div class="bar {{ r.status }}"><span style="width:{{ r.percent }}%"></span></div></td>
+        <td class="num">{{ r.percent }}%</td>
+        <td class="faint">{% if r.status != 'ok' %}{{ r.hint }}{% else %}✓{% endif %}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    <p class="faint mt">Missing a field your app records under a different name? Platform admins add a mapping rule to the gateway's <code>transform/genai</code> processor (<code>deploy/templates/otel-collector.yaml.j2</code>).</p>
+  </div>
+</div>
+<form method="post" action="/products/{{ product.id }}/onboard/3/next" class="actions mt-lg">{{ m.csrf() }}<button class="btn primary">Continue to KPIs &amp; targets</button></form>
+{% endblock %}

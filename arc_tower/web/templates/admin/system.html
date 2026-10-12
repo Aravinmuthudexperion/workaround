@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% set nav = "system" %}
+{% block title %}System health{% endblock %}
+{% block crumbs %}Manage / System health{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>System health</h1><div class="sub">The components behind ARC Tower, all running natively on this machine.</div></div></div>
+<div class="grid grid-3">
+  {% for c in components %}
+  <div class="card"><div class="card-head"><h2>{{ c.name }}</h2>
+    {% if c.ok is none %}<span class="badge">optional</span>{% elif c.ok %}<span class="badge ok">healthy</span>{% else %}<span class="badge bad">down</span>{% endif %}</div>
+    <p class="faint" style="margin:0">{{ c.detail }}</p></div>
+  {% endfor %}
+</div>
+<div class="card mt">
+  <h2>Configuration</h2>
+  <table><tbody>
+    <tr><td class="muted">Public ingest URL</td><td><code>{{ settings.public_ingest_url }}</code></td></tr>
+    <tr><td class="muted">Langfuse</td><td>{{ settings.langfuse_host or "not configured" }}{% if settings.langfuse_managed %} · managed projects enabled{% endif %}</td></tr>
+    <tr><td class="muted">Secrets backend</td><td>{{ settings.secrets_backend }}</td></tr>
+    <tr><td class="muted">Single sign-on</td><td>{{ settings.oidc_issuer or "off (password sign-in)" }}</td></tr>
+    <tr><td class="muted">Registry database</td><td><code>{{ settings.database_url.split('@')[-1] }}</code></td></tr>
+  </tbody></table>
+  <p class="faint mt">Change these in <code>.env</code> and restart with <code>python start.py down</code> / <code>up</code>.</p>
+</div>
+{% endblock %}

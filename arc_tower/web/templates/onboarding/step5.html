@@ -1,0 +1,37 @@
+{% extends "onboarding/_wizard.html" %}
+{% import "partials/macros.html" as m with context %}
+{% block heading %}Alerts · {{ product.name }}{% endblock %}
+{% block intro %}Each target with "alert" ticked becomes a Grafana alert rule, evaluated every minute over the last 15 minutes.{% endblock %}
+{% block step %}
+<form method="post" action="/products/{{ product.id }}/onboard/5">{{ m.csrf() }}
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Rules to create</h2>
+    <table><tbody>
+    {% for t in targets %}
+      <tr><td>{{ t.kpi.name }} {{ '>' if t.kpi.breach == 'above' else '<' }} {{ t.threshold | fmt(t.kpi.unit) }}</td>
+        <td><span class="badge {{ 'bad' if t.severity == 'critical' else 'warn' }} plain">{{ t.severity }}</span></td>
+        <td>{% if t.alert_enabled %}<span class="badge ok">on</span>{% else %}<span class="badge">paused</span>{% endif %}</td></tr>
+    {% else %}<tr><td class="muted">No targets yet - <a href="/products/{{ product.id }}/onboard/4">set some in step 4</a>.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>Where to send alerts</h2>
+    {% if contact_points %}
+      <p class="muted">Existing channels for {{ product.tenant.name }}:</p>
+      <ul>{% for c in contact_points %}<li>{{ c.name }} <span class="faint">({{ c.type }} · {{ c.settings.target }})</span></li>{% endfor %}</ul>
+      <p class="faint">Add another below, or leave it empty to keep these.</p>
+    {% endif %}
+    <div class="grid grid-2">
+      <div class="field"><label for="channel_type">Type</label>
+        <select id="channel_type" name="channel_type">{% for t in channel_types %}<option>{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="channel_name">Name</label><input id="channel_name" type="text" name="channel_name" placeholder="Claims on-call"></div>
+    </div>
+    <div class="field"><label for="channel_target">E-mail address(es) or webhook URL</label>
+      <input id="channel_target" type="text" name="channel_target" placeholder="team@example.com or https://…webhook…">
+      <div class="help">Teams: an incoming-webhook / Workflows URL. E-mail needs SMTP configured in Grafana.</div></div>
+  </div>
+</div>
+{% if can_edit %}<div class="actions mt-lg"><button class="btn primary">Create alert rules &amp; finish</button></div>{% endif %}
+</form>
+{% endblock %}

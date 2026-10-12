@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "users" %}
+{% block title %}Users{% endblock %}
+{% block crumbs %}Manage / Users{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Users</h1><div class="sub">Roles per tenant: <strong>viewer</strong> sees everything, <strong>editor</strong> also onboards products and builds dashboards, <strong>tenant admin</strong> also sees the tenant's audit log. Roles are mirrored into Grafana.</div></div></div>
+<div class="grid grid-3">
+  <div class="card span-2"><div class="table-wrap"><table>
+    <thead><tr><th>User</th><th>Global role</th><th>Tenant memberships</th><th>Last sign-in</th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr><td><strong>{{ u.name }}</strong><div class="faint">{{ u.email }}</div></td>
+        <td>{% if u.is_platform_admin %}<span class="badge accent">platform admin</span>{% elif u.is_executive %}<span class="badge info">executive</span>{% else %}<span class="faint">–</span>{% endif %}</td>
+        <td>
+          {% for mem in u.memberships %}<div class="inline"><span>{{ mem.tenant.name }}</span><span class="badge plain">{{ mem.role }}</span>
+            <form method="post" action="/admin/users/{{ u.id }}/membership">{{ m.csrf() }}<input type="hidden" name="tenant_id" value="{{ mem.tenant_id }}"><input type="hidden" name="remove" value="1"><button class="btn link small" aria-label="Remove {{ u.email }} from {{ mem.tenant.name }}">remove</button></form></div>{% endfor %}
+          <details><summary class="faint">add / change</summary>
+            <form method="post" action="/admin/users/{{ u.id }}/membership" class="inline mt">{{ m.csrf() }}
+              <select name="tenant_id">{% for t in ctx.tenants %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+              <select name="role">{% for r in roles %}<option>{{ r }}</option>{% endfor %}</select>
+              <button class="btn small">Save</button></form></details>
+        </td>
+        <td class="muted">{{ u.last_login_at | ago }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div></div>
+  <form method="post" action="/admin/users" class="card">{{ m.csrf() }}
+    <h2>New user</h2>
+    <div class="field"><label for="ue">E-mail</label><input id="ue" type="email" name="email" required></div>
+    <div class="field"><label for="un">Name</label><input id="un" type="text" name="name"></div>
+    <div class="field"><label for="up">Password</label><input id="up" type="password" name="password" autocomplete="new-password"><div class="help">Leave empty for SSO-only accounts.</div></div>
+    <div class="field"><label for="ut">Tenant</label><select id="ut" name="tenant_id"><option value="">- none -</option>{% for t in ctx.tenants %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="ur">Role in tenant</label><select id="ur" name="role">{% for r in roles %}<option>{{ r }}</option>{% endfor %}</select></div>
+    <label class="check"><input type="checkbox" name="executive"> Executive (read-only, all tenants)</label>
+    <label class="check"><input type="checkbox" name="platform_admin"> Platform admin</label>
+    <button class="btn primary mt">Create user</button>
+  </form>
+</div>
+{% endblock %}

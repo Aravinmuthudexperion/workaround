@@ -1,0 +1,20 @@
+.venv/
+run/
+# Root-anchored: only the bundled binaries (vendor/windows-amd64/...). An
+# unanchored "vendor/" also ignored arc_tower/web/static/vendor/, so Chart.js
+# and htmx were never committed and every native chart rendered blank.
+/vendor/
+dist/
+wheels/
+.env
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+sample_agent/*.env
+# Confidential source material - never publish
+*.pptx
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/

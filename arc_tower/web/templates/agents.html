@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "agents" %}
+{% block title %}Agent registry{% endblock %}
+{% block crumbs %}Agent registry{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Agent registry</h1><div class="sub">Agents are discovered automatically from telemetry (<code>service.name</code> + <code>gen_ai.agent.name</code>). Owners add the business context.</div></div>
+</div>
+<div class="grid grid-4 mb">
+  <div class="card kpi"><div class="label">Agents</div><div class="value">{{ agents|length }}</div></div>
+  <div class="card kpi"><div class="label">Active (24h)</div><div class="value">{{ active_count }}</div><div class="target">sent telemetry in the last 24h</div></div>
+  <div class="card kpi"><div class="label">High-risk</div><div class="value">{{ agents | selectattr('risk_class', 'equalto', 'high') | list | length }}</div></div>
+  <div class="card kpi"><div class="label">Unclassified</div><div class="value">{{ agents | selectattr('risk_class', 'equalto', 'unclassified') | list | length }}</div><div class="target">need an owner review</div></div>
+</div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Agent</th><th>Product</th><th>Platform</th><th>Models</th><th>Status</th><th class="num">LLM calls 24h</th><th class="num">Cost 24h</th><th>Owner</th><th>Risk</th><th></th></tr></thead>
+  <tbody>
+  {% for a in agents %}{% set st = status(a) %}{% set key = (a.product.slug, a.service_name, a.agent_name or "none") %}{% set key_calls = (a.product.slug, a.service_name, a.agent_name) %}
+    <tr>
+      <td><a href="/agents/{{ a.id }}"><strong>{{ a.label }}</strong></a><div class="faint"><code>{{ a.service_name }}</code>{% if a.agent_name and a.agent_name != a.label %} · {{ a.agent_name }}{% endif %}</div></td>
+      <td><a href="/products/{{ a.product.id }}">{{ a.product.name }}</a><div class="faint">{{ a.product.tenant.name }}</div></td>
+      <td class="muted">{{ a.platform }}</td>
+      <td class="faint">{{ (a.models or []) | join(", ") or "–" }}</td>
+      <td>{{ m.agent_badge(st) }}<div class="faint">{{ a.last_seen_at | ago }}</div></td>
+      <td class="num">{{ calls.get(key_calls) | num if calls.get(key_calls) is not none else "–" }}</td>
+      <td class="num">{{ cost.get(key) | money if cost.get(key) is not none else "–" }}</td>
+      <td class="muted">{{ a.owner or "–" }}</td>
+      <td><span class="badge {{ 'bad' if a.risk_class == 'high' else ('warn' if a.risk_class == 'limited' else ('ok' if a.risk_class == 'minimal' else '')) }} plain">{{ a.risk_class }}</span></td>
+      <td><details><summary>Edit</summary>
+        <form method="post" action="/agents/{{ a.id }}" class="mt" style="min-width:260px">{{ m.csrf() }}
+          <div class="field"><label>Display name</label><input type="text" name="display_name" value="{{ a.display_name }}"></div>
+          <div class="field"><label>Owner</label><input type="text" name="owner" value="{{ a.owner }}" placeholder="team or e-mail"></div>
+          <div class="field"><label>Purpose</label><input type="text" name="purpose" value="{{ a.purpose }}"></div>
+          <div class="field"><label>Risk class</label><select name="risk_class">{% for r in risk_classes %}<option {{ 'selected' if a.risk_class == r }}>{{ r }}</option>{% endfor %}</select></div>
+          <button class="btn small primary">Save</button>
+        </form></details></td>
+    </tr>
+  {% else %}<tr><td colspan="10" class="muted">No agents yet - they appear as soon as telemetry arrives.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+
+{% if products %}
+<details class="mt"><summary>Register an agent manually (before it sends telemetry)</summary>
+<form method="post" action="/agents" class="card mt" style="max-width:640px">{{ m.csrf() }}
+  <div class="grid grid-2">
+    <div class="field"><label for="ra-p">Product</label><select id="ra-p" name="product_id">{% for p in products %}<option value="{{ p.id }}">{{ p.tenant.name }} · {{ p.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="ra-s">Service name (OTEL_SERVICE_NAME)</label><input id="ra-s" type="text" name="service_name" required></div>
+    <div class="field"><label for="ra-d">Display name</label><input id="ra-d" type="text" name="display_name"></div>
+    <div class="field"><label for="ra-o">Owner</label><input id="ra-o" type="text" name="owner"></div>
+  </div>
+  <div class="field"><label for="ra-pu">Purpose</label><input id="ra-pu" type="text" name="purpose"></div>
+  <div class="field"><label for="ra-r">Risk class</label><select id="ra-r" name="risk_class">{% for r in risk_classes %}<option>{{ r }}</option>{% endfor %}</select></div>
+  <button class="btn primary">Register</button>
+</form></details>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,7 @@
+{% if product.first_seen_at %}
+<div class="callout ok" role="status"><strong>Data is arriving.</strong> First data {{ product.first_seen_at | ago }}, latest {{ product.last_seen_at | ago }} ·
+  {{ product.coverage.get('spans', 0) }} spans, {{ product.coverage.get('logs', 0) }} log records · field coverage {{ coverage_score }}%.
+  <a href="/products/{{ product.id }}/onboard/3">Check the mapping →</a></div>
+{% else %}
+<div class="callout" role="status"><span class="dot warn pulse"></span> Waiting for the first data from <strong>{{ product.name }}</strong>… this updates automatically.</div>
+{% endif %}

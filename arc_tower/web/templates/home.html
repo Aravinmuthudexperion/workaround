@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "overview" %}
+{% block title %}Overview{% endblock %}
+{% block crumbs %}Overview · {{ ctx.current.name if ctx.current else "All my tenants" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ ctx.current.name if ctx.current else "All my tenants" }}</h1>
+    <div class="sub">{{ products|length }} products · {{ agents_total }} agents ({{ agent_counts.active }} active in the last 24h){% if firing %} · <a href="/alerts" style="color:var(--bad)">{{ firing|length }} alert(s) firing</a>{% endif %}</div>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Time window">
+    {% for w in ["1h", "24h", "7d", "30d"] %}<a href="?window={{ w }}" class="{{ 'active' if window == w }}">{{ w }}</a>{% endfor %}
+  </div>
+</div>
+
+{% if not products %}
+<div class="callout">No products yet. <a href="/onboard">Onboard your first AI product</a> - it takes a few minutes and needs no access to your code.</div>
+{% endif %}
+
+{{ m.layout_bar("overview", layout_source, "/") }}
+<div class="grid grid-6 mt">
+  {% for v in headline %}{{ m.kpi_tile(v) }}{% endfor %}
+</div>
+
+{{ m.chart_grid(layout, "/data/layout/overview?range=" ~ ('7d' if window in ('7d','30d') else ('6h' if window == '1h' else '24h'))) }}
+
+<div class="grid grid-3 mt">
+  <div class="card span-2">
+    <div class="card-head"><h2>Products</h2><a class="btn small" href="/onboard">Onboard a product</a></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Product</th>{% if not ctx.current %}<th>Tenant</th>{% endif %}<th>Connector</th><th>Status</th><th>Last data</th></tr></thead>
+      <tbody>
+      {% for p in products %}
+        <tr><td><a href="/products/{{ p.id }}">{{ p.name }}</a></td>{% if not ctx.current %}<td class="muted">{{ p.tenant.name }}</td>{% endif %}
+          <td class="muted">{{ p.connector_type }}</td><td>{{ m.product_badge(p) }}</td><td class="muted">{{ p.last_seen_at | ago }}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">Nothing onboarded yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>KPIs by category</h2>
+    {% for category, items in by_category.items() if items %}
+      <h3 class="mt">{{ category }}</h3>
+      <table><tbody>
+      {% for v in items %}<tr><td class="muted">{{ v.kpi.name }}</td><td class="num">{{ v.value | fmt(v.kpi.unit) }}</td></tr>{% endfor %}
+      </tbody></table>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

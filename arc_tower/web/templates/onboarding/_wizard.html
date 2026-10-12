@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% set nav = "onboard" %}
+{% block title %}Onboard · step {{ step }}{% endblock %}
+{% block crumbs %}<a href="/products">Products</a> / {{ product.name if product else "New product" }} / onboarding{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{% block heading %}{% endblock %}</h1><div class="sub">{% block intro %}{% endblock %}</div></div>
+  {% if product %}<a class="btn" href="/products/{{ product.id }}">Product page</a>{% endif %}
+</div>
+<ol class="steps" aria-label="Onboarding steps" style="list-style:none;padding:0">
+  {% for title in steps %}{% set n = loop.index %}
+  <li>{% if product and n >= 2 and n <= product.onboarding_step %}
+      <a href="/products/{{ product.id }}/onboard/{{ n }}" class="{{ 'current' if n == step else ('done' if n < step else '') }}" {% if n == step %}aria-current="step"{% endif %}><span class="num">{{ '%02d' % n }}</span>{{ title }}</a>
+    {% else %}
+      <span class="{{ 'current' if n == step else ('done' if product and n < step else '') }}" {% if n == step %}aria-current="step"{% endif %}><span class="num">{{ '%02d' % n }}</span>{{ title }}</span>
+    {% endif %}</li>
+  {% endfor %}
+</ol>
+{% block step %}{% endblock %}
+{% endblock %}

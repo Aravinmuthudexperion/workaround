@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m with context %}
+{% set nav = "products" %}
+{% block title %}{{ product.name }}{% endblock %}
+{% block crumbs %}<a href="/products">Products</a> / {{ product.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ product.name }} {{ m.product_badge(product) }}</h1>
+    <div class="sub">{{ product.tenant.name }} · {{ spec.name if spec else product.connector_type }} ({{ product.ingest_mode }}) · env <code>{{ product.environment }}</code>{% if product.description %} · {{ product.description }}{% endif %}</div>
+  </div>
+  <div class="actions">
+    {% if product.onboarding_step < 6 %}<a class="btn primary" href="/products/{{ product.id }}/onboard/{{ product.onboarding_step }}">Continue onboarding</a>{% endif %}
+    <a class="btn" href="{{ links.overview }}" target="_blank" rel="noopener">Grafana overview</a>
+    <a class="btn" href="/traces?product={{ product.id }}">Traces</a>
+    <a class="btn" href="/agents?product={{ product.id }}">Agents</a>
+  </div>
+</div>
+
+{% if new_key %}
+<div class="callout warn"><strong>New ingest key - copy it now, it is shown only once.</strong>
+  <div class="secret mt" id="newkey">{{ new_key }}</div>
+  <button class="btn small mt" type="button" data-copy="newkey">Copy key</button>
+</div>
+{% endif %}
+
+<div class="tabs">{% for w in ["1h", "24h", "7d", "30d"] %}<a href="?window={{ w }}" class="{{ 'active' if window == w }}">{{ w }}</a>{% endfor %}</div>
+<div class="grid grid-6">
+  {% for v in values %}{{ m.kpi_tile(v) }}{% endfor %}
+</div>
+
+<div class="grid grid-2 mt">
+  <div class="card">
+    <div class="card-head"><h2>{{ 'Ingest keys' if product.is_push else 'Connector' }}</h2></div>
+    {% if product.is_push %}
+      <table><thead><tr><th>Key</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for k in product.ingest_keys %}
+        <tr><td><code>{{ k.hint }}</code></td><td class="muted">{{ k.created_at | ago }}</td><td class="muted">{{ k.last_used_at | ago }}</td>
+          <td>{% if k.active %}<span class="badge ok">active</span>{% else %}<span class="badge">revoked</span>{% endif %}</td>
+          <td>{% if k.active and can_edit %}<form method="post" action="/products/{{ product.id }}/keys/{{ k.id }}/revoke">{{ m.csrf() }}<button class="btn small danger">Revoke</button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">No keys yet.</td></tr>{% endfor %}
+      </tbody></table>
+      {% if can_edit %}<form method="post" action="/products/{{ product.id }}/keys" class="mt">{{ m.csrf() }}<button class="btn">Rotate key</button> <span class="faint">Issues a new key and revokes the others.</span></form>{% endif %}
+      <details class="mt"><summary>Client env block</summary><div class="mt">{{ m.code_block("envblock", env_block) }}</div></details>
+    {% else %}
+      {% for c in product.connectors %}
+        <p><strong>{{ spec.name }}</strong> · every {{ c.interval_seconds }}s ·
+          {% if c.last_status == 'ok' %}<span class="badge ok">ok</span>{% elif c.last_status == 'error' %}<span class="badge bad">error</span>{% else %}<span class="badge">not run yet</span>{% endif %}</p>
+        <p class="faint">Last run {{ c.last_run_at | ago }} · {{ c.last_record_count }} records · {{ c.last_message }}</p>
+        {% if can_edit %}<form method="post" action="/connectors/{{ c.id }}/run">{{ m.csrf() }}<button class="btn small">Run now</button></form>{% endif %}
+      {% else %}<p class="muted">Not configured. <a href="/products/{{ product.id }}/onboard/2">Configure it</a>.</p>{% endfor %}
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Field coverage</h2><span class="badge {{ 'ok' if coverage_score >= 80 else ('warn' if coverage_score > 0 else '') }}">{{ coverage_score }}%</span></div>
+    <table><tbody>
+    {% for r in coverage_rows %}
+      <tr><td>{{ r.label }}<div class="faint"><code>{{ r.field }}</code></div></td>
+        <td style="width:40%"><div class="bar {{ r.status }}"><span style="width:{{ r.percent }}%"></span></div></td>
+        <td class="num">{{ r.percent }}%</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Trace store (Langfuse)</h2>
+    <p>Mode: <strong>{{ product.langfuse_mode.replace('_', ' ') }}</strong>
+      {% if langfuse_ready %}<span class="badge ok">connected</span>{% else %}<span class="badge warn">not configured</span>{% endif %}</p>
+    {% if product.langfuse_mode == 'shared' %}
+      <p class="faint">Traces go to the shared Langfuse project, tagged <code>tenant:{{ product.tenant.slug }}</code> and <code>product:{{ product.slug }}</code>.</p>
+    {% endif %}
+    {% if can_edit %}
+    <details><summary>Use this product's own Langfuse project</summary>
+      <form method="post" action="/products/{{ product.id }}/langfuse" class="mt">{{ m.csrf() }}
+        <div class="field"><label for="lf-pk">Public key</label><input id="lf-pk" type="text" name="public_key" placeholder="pk-lf-..." required></div>
+        <div class="field"><label for="lf-sk">Secret key</label><input id="lf-sk" type="password" name="secret_key" placeholder="sk-lf-..." required></div>
+        <button class="btn">Validate &amp; save</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Dashboards</h2>
+    <div class="actions">
+      <a class="btn" href="/dashboards?uid=arc-overview&product={{ product.slug }}">Agent overview</a>
+      <a class="btn" href="/dashboards?uid=arc-finops&product={{ product.slug }}">FinOps</a>
+      <a class="btn" href="/dashboards?uid=arc-quality&product={{ product.slug }}">Quality &amp; compliance</a>
+    </div>
+    {% if can_edit %}
+    <hr>
+    <details><summary style="color:var(--bad)">Delete product</summary>
+      <form method="post" action="/products/{{ product.id }}/delete" class="mt">{{ m.csrf() }}
+        <div class="field"><label for="confirm">Type <code>{{ product.slug }}</code> to confirm</label><input id="confirm" type="text" name="confirm" required></div>
+        <button class="btn danger">Delete</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

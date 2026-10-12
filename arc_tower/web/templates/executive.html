@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% set nav = "executive" %}
+{% block title %}Executive view{% endblock %}
+{% block crumbs %}Executive view{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Enterprise AI at a glance</h1><div class="sub">Adoption, spend and reliability across every tenant - for CTO, CFO and leadership reviews.</div></div>
+  <div class="actions">
+    <div class="tabs" style="margin:0">{% for w in ["24h", "7d", "30d"] %}<a href="?window={{ w }}" class="{{ 'active' if window == w }}">{{ w }}</a>{% endfor %}</div>
+    <a class="btn" href="{{ grafana_exec }}" target="_blank" rel="noopener">Executive dashboard ↗</a>
+  </div>
+</div>
+<div class="grid grid-4">
+  <div class="card kpi"><div class="label">Tenants onboarded</div><div class="value">{{ tenants|length }}</div><div class="target">{{ rollup|length }} with traffic in {{ window }}</div></div>
+  <div class="card kpi"><div class="label">AI agents</div><div class="value">{{ agents_total }}</div><div class="target">{{ active_by_tenant.values()|sum }} active in the last 24h</div></div>
+  <div class="card kpi"><div class="label">LLM calls ({{ window }})</div><div class="value">{{ totals.calls | num }}</div><div class="target">{{ totals.tokens | num }} tokens</div></div>
+  <div class="card kpi"><div class="label">Estimated AI spend ({{ window }})</div><div class="value">{{ totals.cost | money }}</div><div class="target">tokens × model price</div></div>
+</div>
+
+<div class="grid grid-2 mt" data-charts-src="/data/overview?range={{ '24h' if window == '24h' else '7d' }}&group=arc_tenant_id">
+  <div class="card"><h2>Spend by tenant</h2><div class="chart"><canvas data-chart="cost" data-type="bar" aria-label="Spend by tenant"></canvas></div></div>
+  <div class="card"><h2>LLM calls by tenant</h2><div class="chart"><canvas data-chart="calls" data-type="bar" aria-label="Calls by tenant"></canvas></div></div>
+</div>
+
+<div class="grid grid-3 mt">
+  <div class="card span-2">
+    <h2>Tenant scorecard ({{ window }})</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Tenant</th><th class="num">Products</th><th class="num">Active agents</th><th class="num">LLM calls</th><th class="num">Tokens</th><th class="num">Est. spend</th><th class="num">Error rate</th></tr></thead>
+      <tbody>
+      {% for t in tenants %}{% set r = rollup.get(t.slug, {}) %}
+        <tr><td><strong>{{ t.name }}</strong></td><td class="num">{{ t.products|length }}</td><td class="num">{{ active_by_tenant.get(t.id, 0) }}</td>
+          <td class="num">{{ r.get('calls') | num }}</td><td class="num">{{ r.get('tokens') | num }}</td><td class="num">{{ r.get('cost') | money }}</td>
+          <td class="num">{% if r.get('error_rate') is not none %}<span style="color:{{ 'var(--bad)' if r.error_rate > 5 else 'inherit' }}">{{ '%.1f' % r.error_rate }}%</span>{% else %}–{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>Spend by model</h2>
+    <table><tbody>{% for model, cost in by_model[:8] %}<tr><td>{{ model }}</td><td class="num">{{ cost | money }}</td></tr>{% else %}<tr><td class="muted">No data.</td></tr>{% endfor %}</tbody></table>
+    <h2 class="mt-lg">Agents by risk class</h2>
+    <table><tbody>{% for cls, n in risk.items() %}<tr><td>{{ cls }}</td><td class="num">{{ n }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+</div>
+{% endblock %}

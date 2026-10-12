@@ -1,0 +1,65 @@
+{% extends "onboarding/_wizard.html" %}
+{% import "partials/macros.html" as m with context %}
+{% block heading %}Ingest data · {{ product.name }}{% endblock %}
+{% block intro %}{% if product.is_push %}Add these environment variables to the application's deployment. That is the only change on the client side.{% else %}Enter read-only credentials for {{ spec.name }}. ARC Tower pulls the telemetry on a schedule.{% endif %}{% endblock %}
+{% block step %}
+<div hx-get="/products/{{ product.id }}/status" hx-trigger="load, every 4s" hx-swap="innerHTML"></div>
+
+{% if product.is_push %}
+<div class="grid grid-3">
+  <div class="card span-2">
+    <div class="card-head"><h2>Environment variables</h2>{% if not new_key %}<span class="faint">Key hidden - rotate to get a new one</span>{% endif %}</div>
+    {% if new_key %}<div class="callout warn">This block contains a new ingest key. <strong>Copy it now</strong> - it is not shown again.</div>{% endif %}
+    {{ m.code_block("envblock", env_block) }}
+    <p class="faint mt">Set them wherever the app's environment is configured: a <code>.env</code> file, Kubernetes <code>env:</code>, Docker Compose, Azure App Service settings or a CI/CD variable group.</p>
+    {% if spec.push_notes %}<div class="callout mt">{{ spec.push_notes }}</div>{% endif %}
+    {% if can_edit and not new_key %}
+    <form method="post" action="/products/{{ product.id }}/keys">{{ m.csrf() }}<input type="hidden" name="back" value="/products/{{ product.id }}/onboard/2"><button class="btn">Issue a new key</button></form>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>How it works</h2>
+    <ol class="muted" style="padding-left:18px;margin:0">
+      <li>The OpenTelemetry SDK inside the app reads these variables at start-up.</li>
+      <li>It sends spans and logs to the ARC ingest endpoint with your key.</li>
+      <li>ARC stamps your tenant, masks PII and routes the data to the trace store and dashboards.</li>
+    </ol>
+    <hr>
+    <h3>No OpenTelemetry in the app yet?</h3>
+    <p class="faint">Zero-code auto-instrumentation - new packages and start command, no code edits:</p>
+    {{ m.code_block("autoinst", "pip install opentelemetry-distro opentelemetry-exporter-otlp \\\n  openinference-instrumentation-langchain\nopentelemetry-instrument python app.py") }}
+  </div>
+</div>
+{% else %}
+<div class="grid grid-3">
+  <div class="card span-2">
+    <h2>{{ spec.name }} credentials {{ m.maturity_badge(spec.maturity) }}</h2>
+    {% if spec.maturity == 'beta' %}<div class="callout warn">Beta: this connector is implemented against the platform's documented API but has not been validated on a live account yet.</div>{% endif %}
+    <form method="post" action="/products/{{ product.id }}/onboard/2/connector">{{ m.csrf() }}
+      {% for f in spec.fields %}
+      <div class="field"><label for="f-{{ f.name }}">{{ f.label }}{% if not f.required %} <span class="faint">(optional)</span>{% endif %}</label>
+        {% set current = connector.config.get(f.name, f.default) if connector else f.default %}
+        {% if f.kind == 'textarea' %}<textarea id="f-{{ f.name }}" name="{{ f.name }}">{{ current }}</textarea>
+        {% elif f.secret %}<input id="f-{{ f.name }}" type="password" name="{{ f.name }}" placeholder="{{ 'stored - leave blank to keep' if connector and connector.secret_ref else '' }}" autocomplete="off">
+        {% else %}<input id="f-{{ f.name }}" type="text" name="{{ f.name }}" value="{{ current }}">{% endif %}
+        {% if f.help %}<div class="help">{{ f.help }}</div>{% endif %}</div>
+      {% endfor %}
+      <div class="field"><label for="interval">Pull every (seconds)</label>
+        <input id="interval" type="number" min="30" name="interval_seconds" value="{{ connector.interval_seconds if connector else spec.default_interval_seconds }}" style="max-width:160px"></div>
+      {% if can_edit %}<button class="btn primary">Save connector</button>{% endif %}
+    </form>
+  </div>
+  <div class="card">
+    <h2>Status</h2>
+    {% if connector %}
+      <p>{% if connector.last_status == 'ok' %}<span class="badge ok">ok</span>{% elif connector.last_status == 'error' %}<span class="badge bad">error</span>{% else %}<span class="badge">waiting for first run</span>{% endif %}</p>
+      <p class="faint">Last run {{ connector.last_run_at | ago }} · {{ connector.last_record_count }} records</p>
+      {% if connector.last_message %}<p class="faint">{{ connector.last_message }}</p>{% endif %}
+      {% if can_edit %}<form method="post" action="/connectors/{{ connector.id }}/run">{{ m.csrf() }}<button class="btn small">Run now</button></form>{% endif %}
+    {% else %}<p class="muted">Save the credentials to start pulling.</p>{% endif %}
+    <p class="faint mt">Credentials are stored encrypted in the ARC secrets store (or Vault) and never shown again.</p>
+  </div>
+</div>
+{% endif %}
+<form method="post" action="/products/{{ product.id }}/onboard/2/next" class="actions mt-lg">{{ m.csrf() }}<button class="btn primary">Continue to mapping</button></form>
+{% endblock %}
