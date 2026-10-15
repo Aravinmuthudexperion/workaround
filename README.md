@@ -150,10 +150,37 @@ tests/             pytest suite
 |---|---|---|
 | Custom agent (OpenTelemetry), LangChain/LangGraph, n8n | push | available |
 | Demo enterprise platform | pull | available (simulated data) |
+| Azure platform (resources, metrics, cost) | pull | beta: tested against a simulated Azure, not yet a live subscription (`pip install -e .[azure]`) |
 | Azure AI Foundry (App Insights KQL) | pull | beta: built against documented APIs, not yet validated on a live account (`pip install -e .[azure]`) |
 | AWS Bedrock (CloudWatch invocation logs) | pull | beta, as above (`pip install -e .[aws]`) |
 | ServiceNow (Table API), Salesforce (SOQL) | pull | beta, as above |
 | Freshdesk, Airia | pull | planned |
+
+### Azure platform connector
+
+For clients whose resource groups hold several products. The client names **one** resource of the
+product (its web app, function app or container app); ARC proposes the rest from evidence that needs
+only read access, and a person confirms it in onboarding step 3 (or on the product page):
+
+| Evidence | Confidence weight |
+|---|---|
+| Role assignments / Key Vault access policies of the starting point's managed identity | high |
+| App Service plan or Container Apps environment hosting it; App Insights linked to it; same product tag | high |
+| Private endpoint in the starting point's virtual network | medium |
+| Name contains the product's word (e.g. `warranty`) | low |
+
+Resources other apps also use are marked **shared**; the reviewer sets this product's share of their
+cost. The connector runs every minute and pulls the latest 1-minute Azure Monitor value of each
+metric (`arc_azure_metric`; Azure's finest grain, published 1-3 minutes after the fact). It re-scans
+the resources every 30 minutes (or at once on "Run now" / saving the connector), and pulls month-to-date
+cost per resource every hour (`arc_azure_cost`, only what can be attributed). Scans also flag risks:
+public network access, key-based auth, anonymous blob access, missing tags.
+
+Access for the ARC identity (all read-only): **Reader** (+ **Monitoring Reader**) on the resource
+groups and **Cost Management Reader**. Sign-in is an app registration's client secret, or ARC's
+Managed Identity when the secret is left empty. Code: `services/azure_mapping.py` (mapping, pure),
+`services/azure_resources.py` (review, cost), `connectors/plugins/azure_platform.py`,
+`integrations/azure/client.py`.
 
 To add a platform: add a `ConnectorType` to `connectors/catalog.py` and a `PullConnector`
 subclass in `connectors/plugins/`, then register it in `connectors/registry.py`.

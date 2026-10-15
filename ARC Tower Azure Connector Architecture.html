@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARC Tower Azure Connector Architecture Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1560px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>ARC Tower · Azure Platform Connector</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">How one product's Azure resources are found inside a resource group shared by several products, and how their metrics, cost, risks and traces reach ARC Tower</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1400 1040" font-family="JetBrains Mono, monospace">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+          </marker>
+          <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ============================ ARROWS (drawn first, behind boxes) ============================ -->
+
+        <!-- 1 config: user step 2 -> connector worker (routed above the zones) -->
+        <path d="M 275 100 L 288 100 L 288 22 L 1040 22 L 1040 138" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+        <text x="560" y="16" fill="#22d3ee" font-size="9" font-weight="600">1 · config: subscription · starting point · (RG, tag optional)</text>
+
+        <!-- secret -> secrets store -->
+        <line x1="147" y1="262" x2="147" y2="298" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrow-rose)"/>
+
+        <!-- 2 sign in: worker -> Entra ID -->
+        <path d="M 940 138 L 940 88 L 522 88" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrow-rose)"/>
+        <text x="560" y="80" fill="#fb7185" font-size="9" font-weight="600">2 · sign in → read-only token</text>
+
+        <!-- APIs -> worker -->
+        <line x1="812" y1="185" x2="866" y2="185" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="839" y="178" fill="#fbbf24" font-size="8" text-anchor="middle">3 ·</text>
+        <line x1="812" y1="285" x2="866" y2="285" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="839" y="278" fill="#fbbf24" font-size="8" text-anchor="middle">5 ·</text>
+        <line x1="812" y1="385" x2="866" y2="385" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="839" y="378" fill="#fbbf24" font-size="8" text-anchor="middle">5 ·</text>
+
+        <!-- resource group read by the APIs -->
+        <line x1="612" y1="185" x2="636" y2="185" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="612" y1="285" x2="636" y2="285" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="612" y1="385" x2="636" y2="385" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- worker -> mapping engine -> product map -->
+        <line x1="985" y1="422" x2="985" y2="458" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <text x="995" y="444" fill="#94a3b8" font-size="8">3 · inventory + identity grants</text>
+        <line x1="985" y1="662" x2="985" y2="698" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <text x="995" y="684" fill="#94a3b8" font-size="8">proposed map</text>
+
+        <!-- product map -> worker: which resources to pull -->
+        <path d="M 1102 760 L 1120 760 L 1120 330 L 1104 330" fill="none" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow-violet)"/>
+        <text x="1124" y="560" fill="#a78bfa" font-size="7" transform="rotate(-90 1124 560)" text-anchor="middle">tracked = not rejected</text>
+
+        <!-- worker -> collector -> prometheus -> grafana -->
+        <line x1="1102" y1="170" x2="1138" y2="170" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <line x1="1255" y1="202" x2="1255" y2="238" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <line x1="1255" y1="322" x2="1255" y2="358" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+
+        <!-- 4 review: user step 3 <-> product map (routed below the zones) -->
+        <path d="M 20 470 L 8 470 L 8 965 L 985 965 L 985 794" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+        <text x="420" y="959" fill="#22d3ee" font-size="9" font-weight="600">4 · review: confirm / reject / share % for shared resources</text>
+
+        <!-- 6 traceability lane -->
+        <path d="M 465 682 L 465 865 L 636 865" fill="none" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-amber)"/>
+        <text x="475" y="760" fill="#fbbf24" font-size="8">app telemetry</text>
+        <text x="475" y="772" fill="#fbbf24" font-size="8">(only if the app</text>
+        <text x="475" y="784" fill="#fbbf24" font-size="8">is instrumented)</text>
+        <line x1="812" y1="865" x2="1136" y2="865" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="830" y="857" fill="#fbbf24" font-size="8">6 · requests · agent steps · tokens (KQL pull or OTLP push)</text>
+        <line x1="1255" y1="828" x2="1255" y2="774" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+        <text x="1262" y="806" fill="#94a3b8" font-size="8">via collector</text>
+        <text x="1262" y="817" fill="#94a3b8" font-size="8">(PII masked)</text>
+
+        <!-- ============================ ZONE: USER INPUTS ============================ -->
+        <text x="20" y="52" fill="#22d3ee" font-size="10" font-weight="700">USER · ONBOARDING</text>
+
+        <rect x="20" y="62" width="255" height="200" rx="6" fill="#0f172a"/>
+        <rect x="20" y="62" width="255" height="200" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="147" y="84" fill="white" font-size="12" font-weight="600" text-anchor="middle">Step 2 · Connect Azure</text>
+        <text x="34" y="108" fill="white" font-size="9">Subscription ID(s)</text>
+        <text x="262" y="108" fill="#fb7185" font-size="8" text-anchor="end">required</text>
+        <text x="34" y="126" fill="white" font-size="9">Starting point</text>
+        <text x="262" y="126" fill="#fb7185" font-size="8" text-anchor="end">required</text>
+        <text x="44" y="139" fill="#22d3ee" font-size="8">e.g. func-warranty-processor</text>
+        <text x="34" y="158" fill="#94a3b8" font-size="9">Resource group(s)</text>
+        <text x="262" y="158" fill="#64748b" font-size="8" text-anchor="end">optional</text>
+        <text x="34" y="176" fill="#94a3b8" font-size="9">Product tag</text>
+        <text x="262" y="176" fill="#64748b" font-size="8" text-anchor="end">optional</text>
+        <text x="34" y="200" fill="white" font-size="9">Tenant · Client ID · Secret</text>
+        <text x="44" y="213" fill="#94a3b8" font-size="8">needed while ARC runs outside</text>
+        <text x="44" y="225" fill="#94a3b8" font-size="8">Azure; none with Managed</text>
+        <text x="44" y="237" fill="#94a3b8" font-size="8">Identity / Lighthouse</text>
+
+        <rect x="20" y="300" width="255" height="60" rx="6" fill="#0f172a"/>
+        <rect x="20" y="300" width="255" height="60" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="147" y="324" fill="white" font-size="11" font-weight="600" text-anchor="middle">Secrets store</text>
+        <text x="147" y="341" fill="#94a3b8" font-size="9" text-anchor="middle">client secret encrypted / Vault</text>
+
+        <rect x="20" y="400" width="255" height="142" rx="6" fill="#0f172a"/>
+        <rect x="20" y="400" width="255" height="142" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="147" y="422" fill="white" font-size="12" font-weight="600" text-anchor="middle">Step 3 · Review map</text>
+        <text x="34" y="446" fill="#94a3b8" font-size="9">• proposed resources +</text>
+        <text x="44" y="459" fill="#94a3b8" font-size="9">why ARC linked each one</text>
+        <text x="34" y="478" fill="#94a3b8" font-size="9">• Confirm / Reject</text>
+        <text x="34" y="497" fill="#94a3b8" font-size="9">• share % of shared ones</text>
+        <text x="34" y="516" fill="#94a3b8" font-size="9">• decisions kept on re-scan</text>
+
+        <rect x="20" y="582" width="255" height="100" rx="6" fill="#0f172a"/>
+        <rect x="20" y="582" width="255" height="100" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="147" y="604" fill="white" font-size="12" font-weight="600" text-anchor="middle">Product page</text>
+        <text x="34" y="628" fill="#94a3b8" font-size="9">• cost: dedicated + allocated</text>
+        <text x="34" y="646" fill="#94a3b8" font-size="9">• metrics & risks per resource</text>
+        <text x="34" y="664" fill="#94a3b8" font-size="9">• traces (if instrumented)</text>
+
+        <!-- ============================ ZONE: CLIENT AZURE ============================ -->
+        <rect x="300" y="40" width="530" height="900" rx="12" fill="rgba(251, 191, 36, 0.04)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="314" y="58" fill="#fbbf24" font-size="10" font-weight="700">CLIENT AZURE · &lt;client name&gt;</text>
+
+        <rect x="320" y="66" width="200" height="50" rx="6" fill="#0f172a"/>
+        <rect x="320" y="66" width="200" height="50" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="420" y="86" fill="white" font-size="11" font-weight="600" text-anchor="middle">Microsoft Entra ID</text>
+        <text x="420" y="102" fill="#94a3b8" font-size="8" text-anchor="middle">ARC identity · read-only roles</text>
+
+        <!-- resource group -->
+        <rect x="320" y="140" width="292" height="542" rx="10" fill="transparent" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="330" y="156" fill="#fbbf24" font-size="9" font-weight="600">Resource group ai-prod-rg · 3 products</text>
+
+        <text x="334" y="174" fill="#34d399" font-size="8" font-weight="700">WARRANTY CLAIMS AI · mapped (High)</text>
+        <rect x="334" y="180" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="180" width="264" height="34" rx="5" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="2"/>
+        <text x="344" y="194" fill="white" font-size="10" font-weight="600">★ func-warranty-processor</text>
+        <text x="344" y="207" fill="#a7f3d0" font-size="8">starting point · identity mi-warranty</text>
+        <rect x="334" y="222" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="222" width="264" height="34" rx="5" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="344" y="236" fill="white" font-size="10" font-weight="600">stwarrantydocs</text>
+        <text x="344" y="249" fill="#94a3b8" font-size="8">identity has Blob role + tag product=warranty</text>
+        <rect x="334" y="264" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="264" width="264" height="34" rx="5" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="344" y="278" fill="white" font-size="10" font-weight="600">appi-warranty</text>
+        <text x="344" y="291" fill="#94a3b8" font-size="8">App Insights linked to the app</text>
+
+        <text x="334" y="318" fill="#fb923c" font-size="8" font-weight="700">SHARED · linked, but other apps use it too</text>
+        <rect x="334" y="324" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="324" width="264" height="34" rx="5" fill="rgba(251, 146, 60, 0.25)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="344" y="338" fill="white" font-size="10" font-weight="600">oai-shared (Azure OpenAI)</text>
+        <text x="344" y="351" fill="#94a3b8" font-size="8">OpenAI User role · also dealer, parts</text>
+        <rect x="334" y="366" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="366" width="264" height="34" rx="5" fill="rgba(251, 146, 60, 0.25)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="344" y="380" fill="white" font-size="10" font-weight="600">stshared (Blob)</text>
+        <text x="344" y="393" fill="#94a3b8" font-size="8">role on a container · also parts</text>
+        <rect x="334" y="408" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="408" width="264" height="34" rx="5" fill="rgba(251, 146, 60, 0.25)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="344" y="422" fill="white" font-size="10" font-weight="600">asp-shared-plan</text>
+        <text x="344" y="435" fill="#94a3b8" font-size="8">hosts the app · also hosts dealer</text>
+        <rect x="334" y="450" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="450" width="264" height="34" rx="5" fill="rgba(251, 146, 60, 0.25)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="344" y="464" fill="white" font-size="10" font-weight="600">kv-ai-shared (Key Vault)</text>
+        <text x="344" y="477" fill="#94a3b8" font-size="8">access policy · also parts</text>
+
+        <text x="334" y="504" fill="#34d399" font-size="8" font-weight="700">LOW CONFIDENCE · user decides</text>
+        <rect x="334" y="510" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="510" width="264" height="34" rx="5" fill="rgba(6, 78, 59, 0.15)" stroke="#34d399" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="344" y="524" fill="white" font-size="10" font-weight="600">stwarrantyarchive</text>
+        <text x="344" y="537" fill="#94a3b8" font-size="8">name match only → shown for review</text>
+
+        <text x="334" y="564" fill="#94a3b8" font-size="8" font-weight="700">OTHER PRODUCTS · not linked, never pulled</text>
+        <rect x="334" y="570" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="570" width="264" height="34" rx="5" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+        <text x="344" y="584" fill="#cbd5e1" font-size="10" font-weight="600">app-dealerassist-web · cosmos-dealer-chat</text>
+        <text x="344" y="597" fill="#64748b" font-size="8">only the dealer identity has access</text>
+        <rect x="334" y="612" width="264" height="34" rx="5" fill="#0f172a"/>
+        <rect x="334" y="612" width="264" height="34" rx="5" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+        <text x="344" y="626" fill="#cbd5e1" font-size="10" font-weight="600">ca-partsearch-api · stpartsimages</text>
+        <text x="344" y="639" fill="#64748b" font-size="8">only the parts identity has access</text>
+        <text x="466" y="668" fill="#64748b" font-size="8" text-anchor="middle">ARC reads settings only · never the data inside</text>
+
+        <!-- Azure read APIs -->
+        <text x="640" y="140" fill="#fbbf24" font-size="8" font-weight="700">AZURE READ APIs</text>
+        <rect x="640" y="150" width="172" height="70" rx="6" fill="#0f172a"/>
+        <rect x="640" y="150" width="172" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="726" y="170" fill="white" font-size="11" font-weight="600" text-anchor="middle">Resource Graph</text>
+        <text x="726" y="186" fill="#94a3b8" font-size="8" text-anchor="middle">resources · tags · identities</text>
+        <text x="726" y="198" fill="#94a3b8" font-size="8" text-anchor="middle">role assignments · settings</text>
+        <text x="726" y="212" fill="#fbbf24" font-size="7" text-anchor="middle">Reader · every 30 min</text>
+
+        <rect x="640" y="250" width="172" height="70" rx="6" fill="#0f172a"/>
+        <rect x="640" y="250" width="172" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="726" y="270" fill="white" font-size="11" font-weight="600" text-anchor="middle">Azure Monitor</text>
+        <text x="726" y="286" fill="#94a3b8" font-size="8" text-anchor="middle">metrics per resource ID</text>
+        <text x="726" y="298" fill="#94a3b8" font-size="8" text-anchor="middle">tokens per model deployment</text>
+        <text x="726" y="312" fill="#fbbf24" font-size="7" text-anchor="middle">Monitoring Reader · every 1 min</text>
+
+        <rect x="640" y="350" width="172" height="70" rx="6" fill="#0f172a"/>
+        <rect x="640" y="350" width="172" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="726" y="370" fill="white" font-size="11" font-weight="600" text-anchor="middle">Cost Management</text>
+        <text x="726" y="386" fill="#94a3b8" font-size="8" text-anchor="middle">month-to-date cost</text>
+        <text x="726" y="398" fill="#94a3b8" font-size="8" text-anchor="middle">per resource ID</text>
+        <text x="726" y="412" fill="#fbbf24" font-size="7" text-anchor="middle">Cost Mgmt Reader · every 1 h</text>
+
+        <rect x="640" y="830" width="172" height="70" rx="6" fill="#0f172a"/>
+        <rect x="640" y="830" width="172" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="726" y="850" fill="white" font-size="11" font-weight="600" text-anchor="middle">App Insights</text>
+        <text x="726" y="866" fill="#94a3b8" font-size="8" text-anchor="middle">Log Analytics workspace</text>
+        <text x="726" y="878" fill="#94a3b8" font-size="8" text-anchor="middle">per-request traces</text>
+        <text x="726" y="892" fill="#fbbf24" font-size="7" text-anchor="middle">Log Analytics Reader</text>
+
+        <!-- ============================ ZONE: ARC TOWER ============================ -->
+        <rect x="850" y="40" width="535" height="900" rx="12" fill="rgba(52, 211, 153, 0.03)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="864" y="58" fill="#34d399" font-size="10" font-weight="700">ARC TOWER</text>
+
+        <rect x="870" y="140" width="232" height="282" rx="6" fill="#0f172a"/>
+        <rect x="870" y="140" width="232" height="282" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="986" y="162" fill="white" font-size="12" font-weight="600" text-anchor="middle">Azure connector worker</text>
+        <text x="986" y="177" fill="#94a3b8" font-size="8" text-anchor="middle">azure_platform plugin · runs every minute</text>
+        <text x="884" y="204" fill="#fbbf24" font-size="9" font-weight="600">every 30 min</text>
+        <text x="884" y="218" fill="#94a3b8" font-size="8">scan scope → map the product</text>
+        <text x="884" y="230" fill="#94a3b8" font-size="8">(also on Run now / save)</text>
+        <text x="884" y="256" fill="#fbbf24" font-size="9" font-weight="600">every 1 min</text>
+        <text x="884" y="270" fill="#94a3b8" font-size="8">latest 1-minute metric value</text>
+        <text x="884" y="282" fill="#94a3b8" font-size="8">for tracked resources only</text>
+        <text x="884" y="308" fill="#fbbf24" font-size="9" font-weight="600">every 1 h</text>
+        <text x="884" y="322" fill="#94a3b8" font-size="8">cost per tracked resource</text>
+        <text x="884" y="334" fill="#94a3b8" font-size="8">× this product's share</text>
+        <text x="884" y="360" fill="#34d399" font-size="9" font-weight="600">every record stamped</text>
+        <text x="884" y="374" fill="#94a3b8" font-size="8">tenant + product → isolation</text>
+        <text x="884" y="400" fill="#64748b" font-size="7">read-only · nothing written to Azure</text>
+
+        <rect x="870" y="460" width="232" height="202" rx="6" fill="#0f172a"/>
+        <rect x="870" y="460" width="232" height="202" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="986" y="482" fill="white" font-size="12" font-weight="600" text-anchor="middle">Product mapping engine</text>
+        <text x="986" y="497" fill="#94a3b8" font-size="8" text-anchor="middle">evidence from the starting point</text>
+        <text x="884" y="520" fill="#94a3b8" font-size="8">identity role assignment</text><text x="1088" y="520" fill="#34d399" font-size="8" text-anchor="end">0.8</text>
+        <text x="884" y="534" fill="#94a3b8" font-size="8">Key Vault access policy</text><text x="1088" y="534" fill="#34d399" font-size="8" text-anchor="end">0.8</text>
+        <text x="884" y="548" fill="#94a3b8" font-size="8">hosting plan / environment</text><text x="1088" y="548" fill="#34d399" font-size="8" text-anchor="end">0.8</text>
+        <text x="884" y="562" fill="#94a3b8" font-size="8">App Insights link</text><text x="1088" y="562" fill="#34d399" font-size="8" text-anchor="end">0.9</text>
+        <text x="884" y="576" fill="#94a3b8" font-size="8">same product tag</text><text x="1088" y="576" fill="#34d399" font-size="8" text-anchor="end">0.9</text>
+        <text x="884" y="590" fill="#94a3b8" font-size="8">private endpoint, same VNet</text><text x="1088" y="590" fill="#fbbf24" font-size="8" text-anchor="end">0.5</text>
+        <text x="884" y="604" fill="#94a3b8" font-size="8">name contains product word</text><text x="1088" y="604" fill="#fb7185" font-size="8" text-anchor="end">0.3</text>
+        <text x="884" y="626" fill="white" font-size="8">→ confidence High / Medium / Low</text>
+        <text x="884" y="640" fill="white" font-size="8">→ shared? (other identities use it)</text>
+        <text x="884" y="654" fill="white" font-size="8">→ risks (public access, keys, no tags)</text>
+
+        <rect x="870" y="700" width="232" height="92" rx="6" fill="#0f172a"/>
+        <rect x="870" y="700" width="232" height="92" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="986" y="721" fill="white" font-size="12" font-weight="600" text-anchor="middle">Product map (ARC DB)</text>
+        <text x="986" y="737" fill="#94a3b8" font-size="8" text-anchor="middle">product_resources</text>
+        <text x="986" y="752" fill="#94a3b8" font-size="8" text-anchor="middle">confidence · evidence · shared · risks</text>
+        <text x="986" y="766" fill="#94a3b8" font-size="8" text-anchor="middle">decision · share % · latest metrics</text>
+        <text x="986" y="780" fill="#94a3b8" font-size="8" text-anchor="middle">month-to-date cost</text>
+
+        <rect x="1140" y="140" width="230" height="62" rx="6" fill="#0f172a"/>
+        <rect x="1140" y="140" width="230" height="62" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="1255" y="164" fill="white" font-size="11" font-weight="600" text-anchor="middle">OTel Collector</text>
+        <text x="1255" y="180" fill="#94a3b8" font-size="8" text-anchor="middle">OTLP metrics · tenant stamp</text>
+        <text x="1255" y="192" fill="#94a3b8" font-size="8" text-anchor="middle">PII masking on traces</text>
+
+        <rect x="1140" y="240" width="230" height="82" rx="6" fill="#0f172a"/>
+        <rect x="1140" y="240" width="230" height="82" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="1255" y="262" fill="white" font-size="11" font-weight="600" text-anchor="middle">Prometheus</text>
+        <text x="1255" y="280" fill="#94a3b8" font-size="8" text-anchor="middle">arc_azure_metric (per minute)</text>
+        <text x="1255" y="293" fill="#94a3b8" font-size="8" text-anchor="middle">arc_azure_cost (attributed)</text>
+        <text x="1255" y="310" fill="#a78bfa" font-size="7" text-anchor="middle">labels: tenant · product · resource</text>
+
+        <rect x="1140" y="360" width="230" height="70" rx="6" fill="#0f172a"/>
+        <rect x="1140" y="360" width="230" height="70" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="1255" y="382" fill="white" font-size="11" font-weight="600" text-anchor="middle">Grafana · ARC UI</text>
+        <text x="1255" y="398" fill="#94a3b8" font-size="8" text-anchor="middle">one Grafana org per client</text>
+        <text x="1255" y="410" fill="#94a3b8" font-size="8" text-anchor="middle">dashboards · alerts · product page</text>
+        <text x="1255" y="422" fill="#22d3ee" font-size="7" text-anchor="middle">client sees only its own data</text>
+
+        <rect x="1140" y="460" width="230" height="120" rx="6" fill="#0f172a"/>
+        <rect x="1140" y="460" width="230" height="120" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="1255" y="480" fill="white" font-size="10" font-weight="600" text-anchor="middle">Cost attribution</text>
+        <text x="1152" y="500" fill="#34d399" font-size="8">dedicated</text><text x="1360" y="500" fill="#94a3b8" font-size="8" text-anchor="end">100% of resource</text>
+        <text x="1152" y="516" fill="#fb923c" font-size="8">shared + share set</text><text x="1360" y="516" fill="#94a3b8" font-size="8" text-anchor="end">cost × share %</text>
+        <text x="1152" y="532" fill="#fb923c" font-size="8">shared, no share</text><text x="1360" y="532" fill="#94a3b8" font-size="8" text-anchor="end">shown, not counted</text>
+        <text x="1152" y="548" fill="#94a3b8" font-size="8">still proposed</text><text x="1360" y="548" fill="#94a3b8" font-size="8" text-anchor="end">awaiting review</text>
+        <text x="1152" y="568" fill="#64748b" font-size="7">exact split needs diagnostic logs</text>
+
+        <rect x="1140" y="700" width="230" height="72" rx="6" fill="#0f172a"/>
+        <rect x="1140" y="700" width="230" height="72" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="1255" y="722" fill="white" font-size="11" font-weight="600" text-anchor="middle">Langfuse</text>
+        <text x="1255" y="738" fill="#94a3b8" font-size="8" text-anchor="middle">traces · agent steps · tokens</text>
+        <text x="1255" y="751" fill="#94a3b8" font-size="8" text-anchor="middle">tagged tenant:· product:·</text>
+
+        <rect x="1140" y="830" width="230" height="70" rx="6" fill="#0f172a"/>
+        <rect x="1140" y="830" width="230" height="70" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="1255" y="851" fill="white" font-size="11" font-weight="600" text-anchor="middle">Trace connectors</text>
+        <text x="1255" y="867" fill="#94a3b8" font-size="8" text-anchor="middle">App Insights KQL pull</text>
+        <text x="1255" y="879" fill="#94a3b8" font-size="8" text-anchor="middle">or OTLP push via ingest proxy</text>
+        <text x="1255" y="892" fill="#34d399" font-size="7" text-anchor="middle">6 · traceability lane</text>
+
+        <!-- ============================ LEGEND (below all zones) ============================ -->
+        <text x="20" y="1000" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="80" y="991" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="1"/>
+        <text x="102" y="1000" fill="#94a3b8" font-size="8">belongs to the product / ARC service</text>
+        <rect x="300" y="991" width="16" height="10" rx="2" fill="rgba(251, 146, 60, 0.25)" stroke="#fb923c" stroke-width="1"/>
+        <text x="322" y="1000" fill="#94a3b8" font-size="8">shared with other products</text>
+        <rect x="480" y="991" width="16" height="10" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="502" y="1000" fill="#94a3b8" font-size="8">other product · excluded</text>
+        <rect x="650" y="991" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="672" y="1000" fill="#94a3b8" font-size="8">user-facing</text>
+        <rect x="760" y="991" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="782" y="1000" fill="#94a3b8" font-size="8">Azure API</text>
+        <rect x="860" y="991" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="882" y="1000" fill="#94a3b8" font-size="8">data store</text>
+        <line x1="960" y1="996" x2="976" y2="996" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="982" y="1000" fill="#94a3b8" font-size="8">sign-in / secret</text>
+        <text x="1100" y="1000" fill="#94a3b8" font-size="8">1 → 6 : order of the flow</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot cyan"></div><h3>What the user gives</h3></div>
+        <ul>
+          <li>• Subscription ID(s) and one starting point (the product's app)</li>
+          <li>• Read-only credentials once (none with Managed Identity / Lighthouse)</li>
+          <li>• Resource group and product tag are optional</li>
+          <li>• Then only Yes / No on the proposed map, plus a share % for shared resources</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>How one product is isolated</h3></div>
+        <ul>
+          <li>• Follow the starting point's managed identity to every resource it was granted</li>
+          <li>• Add hosting, App Insights, tag, network and name evidence, then score it</li>
+          <li>• Resources only other products' identities use are never linked or pulled</li>
+          <li>• Shared resources are flagged; their cost is split by the reviewer's share %</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot violet"></div><h3>What flows into ARC Tower</h3></div>
+        <ul>
+          <li>• Metrics: latest 1-minute values per mapped resource (Azure lags 1-3 min)</li>
+          <li>• Cost: month-to-date per resource every hour, attributed to the product</li>
+          <li>• Risks: public access, key-based auth, anonymous blobs, missing tags</li>
+          <li>• Traces: only when the app sends to App Insights / OpenTelemetry</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">ARC Tower · Azure platform connector (beta) · read-only Azure access · tenant-isolated metrics, cost and traces</p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'arc-tower-azure-connector.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('arc-tower-azure-connector.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

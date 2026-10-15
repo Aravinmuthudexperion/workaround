@@ -25,7 +25,7 @@ class VaultSecretStore(SecretStore):
         resp.raise_for_status()
         return resp.json()["data"]["data"]
 
-    def put(self, name: str, value: dict) -> None:
+    def put(self, name: str, value: dict, session=None) -> None:   # session unused: Vault is not the ARC DB
         self._http.post(self._path("data", name), json={"data": value}).raise_for_status()
 
     def delete(self, name: str) -> None:

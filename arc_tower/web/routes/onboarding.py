@@ -18,7 +18,7 @@ from .. import session as web_session
 from ..deps import TenantContext, current_scope, get_db, tenant_context
 from ..grafana_proxy import grafana_url
 from ..templating import render
-from .products import pop_new_key, remember_new_key
+from .products import azure_context, pop_new_key, remember_new_key
 
 router = APIRouter()
 
@@ -72,7 +72,7 @@ def wizard_step(request: Request, product_id: int, step: int, db: Session = Depe
                     "connector": next((c for c in product.connectors if c.type == product.connector_type), None)}
     elif step == 3:
         rows, score = coverage.report(product)
-        context |= {"coverage_rows": rows, "coverage_score": score}
+        context |= {"coverage_rows": rows, "coverage_score": score, "azure": azure_context(product)}
     elif step == 4:
         context |= {"catalog": kpis.catalog(db), "targets": kpis.targets_for(product)}
     elif step == 5:

@@ -8,10 +8,12 @@ from datetime import datetime
 from typing import Any
 
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.proto.common.v1.common_pb2 import InstrumentationScope
 from opentelemetry.proto.logs.v1.logs_pb2 import LogRecord as PbLogRecord
 from opentelemetry.proto.logs.v1.logs_pb2 import ResourceLogs, ScopeLogs
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics
 from opentelemetry.proto.resource.v1.resource_pb2 import Resource
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
 
@@ -56,6 +58,15 @@ class LogEntry:
     span_id: bytes = b""
 
 
+@dataclass
+class GaugePoint:
+    name: str
+    value: float
+    at: datetime
+    attributes: dict[str, Any] = field(default_factory=dict)
+    description: str = ""
+
+
 def _resource(service_name: str, resource_attrs: dict[str, Any] | None) -> Resource:
     return Resource(attributes=key_values({"service.name": service_name, **(resource_attrs or {})}))
 
@@ -91,4 +102,23 @@ def logs_request(service_name: str, entries: list[LogEntry],
     return ExportLogsServiceRequest(resource_logs=[ResourceLogs(
         resource=_resource(service_name, resource_attrs),
         scope_logs=[ScopeLogs(scope=_SCOPE, log_records=records)],
+    )])
+
+
+def metrics_request(service_name: str, points: list[GaugePoint],
+                    resource_attrs: dict[str, Any] | None = None) -> ExportMetricsServiceRequest:
+    """One gauge metric per name, one data point per (name, attributes)."""
+    by_name: dict[str, list[GaugePoint]] = {}
+    for p in points:
+        by_name.setdefault(p.name, []).append(p)
+    metrics = [
+        Metric(name=name, description=group[0].description, gauge=Gauge(data_points=[
+            NumberDataPoint(time_unix_nano=to_unix_nano(p.at), as_double=float(p.value),
+                            attributes=key_values(p.attributes))
+            for p in group]))
+        for name, group in by_name.items()
+    ]
+    return ExportMetricsServiceRequest(resource_metrics=[ResourceMetrics(
+        resource=_resource(service_name, resource_attrs),
+        scope_metrics=[ScopeMetrics(scope=_SCOPE, metrics=metrics)],
     )])

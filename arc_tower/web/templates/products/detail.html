@@ -29,6 +29,10 @@
   {% for v in values %}{{ m.kpi_tile(v) }}{% endfor %}
 </div>
 
+{% if azure %}
+<div class="mt">{% with back = "/products/" ~ product.id %}{% include "partials/azure_resources.html" %}{% endwith %}</div>
+{% endif %}
+
 <div class="grid grid-2 mt">
   <div class="card">
     <div class="card-head"><h2>{{ 'Ingest keys' if product.is_push else 'Connector' }}</h2></div>

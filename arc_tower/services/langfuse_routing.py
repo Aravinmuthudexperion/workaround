@@ -6,6 +6,8 @@ managed  - project + keys created by ARC through the org API (Langfuse Enterpris
 """
 from __future__ import annotations
 
+from sqlalchemy.orm import object_session
+
 from arc_tower.core.config import get_settings
 from arc_tower.core.constants import LangfuseMode
 from arc_tower.core.security import basic_auth
@@ -52,7 +54,8 @@ def save_own_keys(product: Product, public_key: str, secret_key: str) -> None:
     except LangfuseError as exc:
         raise ValidationFailed(f"Langfuse rejected these keys: {exc}") from exc
     name = langfuse_secret_name(product.id)
-    get_secret_store().put(name, {"public_key": public_key.strip(), "secret_key": secret_key.strip()})
+    get_secret_store().put(name, {"public_key": public_key.strip(), "secret_key": secret_key.strip()},
+                           session=object_session(product))
     product.langfuse_mode = LangfuseMode.OWN_KEYS.value
     product.langfuse_secret_ref = name
     product.langfuse_project_id = projects[0]["id"] if projects else None
@@ -71,7 +74,8 @@ def provision_managed(product: Product) -> None:
     except LangfuseError as exc:
         raise ValidationFailed(f"could not create the Langfuse project: {exc}") from exc
     name = langfuse_secret_name(product.id)
-    get_secret_store().put(name, {"public_key": key["publicKey"], "secret_key": key["secretKey"]})
+    get_secret_store().put(name, {"public_key": key["publicKey"], "secret_key": key["secretKey"]},
+                           session=object_session(product))
     product.langfuse_mode = LangfuseMode.MANAGED.value
     product.langfuse_secret_ref = name
     product.langfuse_project_id = project["id"]

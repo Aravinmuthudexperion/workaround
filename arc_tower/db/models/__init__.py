@@ -2,6 +2,7 @@
 from .agent import Agent
 from .alerting import ContactPoint
 from .audit import AuditLog
+from .azure import ProductResource
 from .connector import Connector
 from .kpi import KpiDefinition, Target
 from .layout import DashboardLayout
@@ -12,5 +13,5 @@ from .user import ApiToken, Membership, User
 
 __all__ = [
     "Agent", "ApiToken", "AuditLog", "Connector", "ContactPoint", "DashboardLayout", "IngestKey", "KpiDefinition",
-    "Membership", "Product", "StoredSecret", "Target", "Tenant", "User",
+    "Membership", "Product", "ProductResource", "StoredSecret", "Target", "Tenant", "User",
 ]

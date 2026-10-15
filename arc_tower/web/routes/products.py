@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 from arc_tower.connectors import catalog
 from arc_tower.integrations.grafana import dashboards as std
 from arc_tower.integrations.prometheus.promql import selector
-from arc_tower.services import access, coverage, kpis, langfuse_routing, products
+from arc_tower.services import access, azure_resources, coverage, kpis, langfuse_routing, products
 from arc_tower.services.access import Scope
+from arc_tower.services.errors import ValidationFailed
 
 from .. import session as web_session
 from ..deps import TenantContext, current_scope, get_db, tenant_context
@@ -52,6 +53,7 @@ def product_detail(request: Request, product_id: int, window: str = "24h", db: S
         values=values, window=window, coverage_rows=rows, coverage_score=score,
         can_edit=scope.can_edit(product.tenant_id), new_key=pop_new_key(request, product.id),
         env_block=products.env_block(product, None), langfuse_ready=langfuse_routing.credentials(product) is not None,
+        azure=azure_context(product),
         links={
             "overview": grafana_url(f"d/{std.OVERVIEW_UID}", org, **{"var-product": product.slug}),
             "finops": grafana_url(f"d/{std.FINOPS_UID}", org, **{"var-product": product.slug}),
@@ -95,6 +97,35 @@ def save_langfuse_keys(request: Request, product_id: int, public_key: str = Form
     langfuse_routing.save_own_keys(product, public_key, secret_key)
     web_session.flash(request, "Langfuse project keys saved. New traces go to that project.")
     return RedirectResponse(f"/products/{product.id}", status_code=303)
+
+
+def azure_context(product) -> dict | None:
+    """Data for the Azure resource map partial; None for products without the Azure platform connector."""
+    if product.connector_type != "azure_platform":
+        return None
+    rows = product.azure_resources
+    return {"rows": rows, "cost": azure_resources.cost_summary(product),
+            "attributed": {r.id: azure_resources.attributed_cost(r) for r in rows},
+            "pending": sum(1 for r in rows if r.present and r.status == azure_resources.PROPOSED)}
+
+
+@router.post("/products/{product_id}/azure-resources/{row_id}", dependencies=[Depends(web_session.verify_csrf)])
+def decide_azure_resource(request: Request, product_id: int, row_id: int, status: str = Form(...),
+                          share_pct: str = Form(""), back: str = Form(""), db: Session = Depends(get_db),
+                          scope: Scope = Depends(current_scope)):
+    product = access.get_product(db, scope, product_id, edit=True)
+    target = back if back.startswith(f"/products/{product.id}") else f"/products/{product.id}"
+    try:
+        share = float(share_pct) if share_pct.strip() else None
+        row = azure_resources.decide(db, scope.email, product, row_id, status, share)
+    except ValueError:
+        web_session.flash(request, "Share must be a number between 0 and 100.", "error")
+        return RedirectResponse(target, status_code=303)
+    except ValidationFailed as exc:
+        web_session.flash(request, str(exc), "error")
+        return RedirectResponse(target, status_code=303)
+    web_session.flash(request, f"{row.name}: {row.status}.")
+    return RedirectResponse(target, status_code=303)
 
 
 @router.post("/products/{product_id}/delete", dependencies=[Depends(web_session.verify_csrf)])

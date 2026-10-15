@@ -5,8 +5,14 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from .emitter import Emitter
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from arc_tower.db.models import Product
 
 
 class ConnectorError(RuntimeError):
@@ -22,6 +28,10 @@ class RunContext:
     since: datetime                 # pull records newer than this
     emitter: Emitter
     log: logging.Logger
+    # The worker's DB session and the product, for plugins that keep registry state
+    # (e.g. the Azure product map). Reuse this session: a second one would wait on SQLite's write lock.
+    session: Session | None = None
+    product: Product | None = None
 
 
 @dataclass

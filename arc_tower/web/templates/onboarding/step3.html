@@ -1,8 +1,11 @@
 {% extends "onboarding/_wizard.html" %}
 {% import "partials/macros.html" as m with context %}
 {% block heading %}Map &amp; standardise · {{ product.name }}{% endblock %}
-{% block intro %}ARC Tower maps common attribute names (OpenInference, OpenLLMetry) onto the OpenTelemetry GenAI conventions automatically. This shows which standard fields your telemetry carries.{% endblock %}
+{% block intro %}{% if azure %}ARC Tower scanned the Azure scope and proposed which resources belong to this product. Review the proposal: cost, metrics, risks and alerts follow what you confirm.{% else %}ARC Tower maps common attribute names (OpenInference, OpenLLMetry) onto the OpenTelemetry GenAI conventions automatically. This shows which standard fields your telemetry carries.{% endif %}{% endblock %}
 {% block step %}
+{% if azure %}
+{% with back = "/products/" ~ product.id ~ "/onboard/3" %}{% include "partials/azure_resources.html" %}{% endwith %}
+{% else %}
 <div class="grid grid-3">
   <div class="card">
     <h2>Coverage score</h2>
@@ -24,5 +27,6 @@
     <p class="faint mt">Missing a field your app records under a different name? Platform admins add a mapping rule to the gateway's <code>transform/genai</code> processor (<code>deploy/templates/otel-collector.yaml.j2</code>).</p>
   </div>
 </div>
+{% endif %}
 <form method="post" action="/products/{{ product.id }}/onboard/3/next" class="actions mt-lg">{{ m.csrf() }}<button class="btn primary">Continue to KPIs &amp; targets</button></form>
 {% endblock %}

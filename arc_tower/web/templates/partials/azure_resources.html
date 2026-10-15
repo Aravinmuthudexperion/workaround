@@ -1,0 +1,48 @@
+{# Azure resource map for one product: proposals from the Azure platform connector, review, cost and risks.
+   Needs: product, azure (from routes.products.azure_context), can_edit, back (URL to return to). #}
+{% import "partials/macros.html" as m with context %}
+<div class="card">
+  <div class="card-head">
+    <h2>Azure resources</h2>
+    {% if azure.pending %}<span class="badge warn">{{ azure.pending }} to review</span>{% elif azure.rows %}<span class="badge ok">reviewed</span>{% endif %}
+  </div>
+  {% if not azure.rows %}
+    <p class="muted">No scan yet. Save the connector in step 2; the first scan runs within a minute.</p>
+  {% else %}
+  {% set c = azure.cost %}
+  <p class="faint">ARC proposed these resources from the starting point using identity, hosting, tag, network and naming evidence. Confirm what belongs to {{ product.name }}, reject the rest. For a shared resource, set this product's share of its cost.</p>
+  {% if c.currency %}
+  <div class="grid grid-4 mt">
+    <div><div class="faint">Cost this month</div><strong>{{ "%.2f"|format(c.total) }} {{ c.currency }}</strong></div>
+    <div><div class="faint">Dedicated</div>{{ "%.2f"|format(c.dedicated) }}</div>
+    <div><div class="faint">Shared (allocated)</div>{{ "%.2f"|format(c.allocated) }}</div>
+    <div><div class="faint">Not attributed yet</div>{{ "%.2f"|format(c.unallocated_shared + c.awaiting_review) }}</div>
+  </div>
+  {% endif %}
+  <table class="mt"><thead><tr><th>Resource</th><th>Confidence</th><th>Why ARC linked it</th><th>Risks</th><th class="num">Cost (MTD)</th><th>Decision</th></tr></thead><tbody>
+  {% for r in azure.rows %}
+    {% set value, basis = azure.attributed[r.id] %}
+    <tr{% if r.status == 'rejected' or not r.present %} class="faint"{% endif %}>
+      <td><strong>{{ r.name }}</strong>{% if r.is_anchor %} <span class="badge info plain">starting point</span>{% endif %}
+        <div class="faint">{{ r.short_type }} · {{ r.resource_group }}{% if not r.present %} · <em>not found in last scan</em>{% endif %}</div></td>
+      <td><span class="badge {{ {'high': 'ok', 'medium': 'warn'}.get(r.level, 'plain') }}">{{ r.level }}</span> <span class="faint">{{ (r.score * 100)|round|int }}%</span></td>
+      <td class="faint">{{ r.evidence|join('; ') }}{% if r.shared %}<div><span class="badge warn plain">shared</span> with {{ r.shared_with|join(', ') }}</div>{% endif %}</td>
+      <td>{% for risk in r.risks %}<div class="faint">⚠ {{ risk }}</div>{% else %}<span class="faint">-</span>{% endfor %}</td>
+      <td class="num">{% if r.cost_mtd is not none %}{{ "%.2f"|format(r.cost_mtd) }}{% if value is not none and value != r.cost_mtd %}<div class="faint">this product: {{ "%.2f"|format(value) }}</div>{% endif %}{% else %}<span class="faint">-</span>{% endif %}
+        <div class="faint">{{ basis }}</div></td>
+      <td>
+        {% if r.status == 'confirmed' %}<span class="badge ok">confirmed</span>{% elif r.status == 'rejected' %}<span class="badge">rejected</span>{% else %}<span class="badge warn plain">proposed</span>{% endif %}
+        {% if can_edit and not r.is_anchor %}
+        <form method="post" action="/products/{{ product.id }}/azure-resources/{{ r.id }}" class="mt" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">{{ m.csrf() }}
+          <input type="hidden" name="back" value="{{ back }}">
+          {% if r.shared %}<input type="number" name="share_pct" min="0" max="100" step="1" value="{{ r.share_pct if r.share_pct is not none else '' }}" placeholder="share %" style="width:84px" aria-label="This product's share in percent">{% endif %}
+          {% if r.status != 'confirmed' or r.shared %}<button class="btn small" name="status" value="confirmed">{{ 'Save' if r.status == 'confirmed' else 'Confirm' }}</button>{% endif %}
+          {% if r.status != 'rejected' %}<button class="btn small" name="status" value="rejected">Reject</button>{% endif %}
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% endif %}
+</div>

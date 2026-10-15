@@ -26,7 +26,7 @@ class ConfigField:
 class ConnectorType:
     key: str
     name: str
-    category: str                 # Custom agents | Agentic platforms | Enterprise applications | Demo
+    category: str                 # Custom agents | Agentic platforms | Cloud platforms | Enterprise applications | Demo
     mode: IngestMode
     platform: str                 # value of arc.platform on the telemetry
     summary: str
@@ -68,6 +68,28 @@ CATALOG: dict[str, ConnectorType] = {c.key: c for c in [
         key="n8n", name="n8n workflows", category="Agentic platforms", mode=IngestMode.PUSH,
         platform="n8n", summary="n8n's OpenTelemetry support pointed at the ARC ingest endpoint.",
         push_notes="Set the variables on the n8n server/container (self-hosted n8n).",
+    ),
+    ConnectorType(
+        key="azure_platform", name="Azure platform (resources, metrics, cost)", category="Cloud platforms",
+        mode=IngestMode.PULL, platform="azure", maturity="beta", default_interval_seconds=60,
+        summary="Finds the Azure resources that belong to this product in shared subscriptions/resource "
+                "groups, starting from one resource you name, then pulls their metrics every minute, and "
+                "their cost and risks.",
+        fields=(
+            ConfigField("subscription_ids", "Subscription ID(s)", help="Comma separated GUIDs."),
+            ConfigField("resource_groups", "Resource group(s)", required=False,
+                        help="Comma separated. Leave empty to scan the whole subscription(s)."),
+            ConfigField("starting_point", "Starting point",
+                        help="One resource of this product: its web app, function app or container app "
+                             "(name or full resource ID). ARC proposes the rest for you to confirm."),
+            ConfigField("product_tag", "Product tag", required=False,
+                        help="Optional, e.g. product=resumex. Defaults to the starting point's own product tag."),
+            ConfigField("tenant_id", "Entra tenant ID", required=False),
+            ConfigField("client_id", "App registration (client) ID", required=False,
+                        help="Read-only roles: Reader (+ Monitoring Reader) on the resource groups, Cost Management "
+                             "Reader. Leave the secret empty to use ARC's Managed Identity."),
+            ConfigField("client_secret", "Client secret", kind="password", secret=True, required=False),
+        ),
     ),
     ConnectorType(
         key="azure_foundry", name="Azure AI Foundry (App Insights)", category="Agentic platforms",

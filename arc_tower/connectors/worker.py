@@ -61,7 +61,8 @@ def run_connector(connector_id: int, sender: CollectorSender) -> None:
                             spec.platform if spec else connector.type)
         emitter = Emitter(stamp, langfuse_routing.auth_header(product), sender)
         ctx = RunContext(connector.id, dict(connector.config or {}), connectors.secrets_for(connector),
-                         dict(connector.cursor or {}), _since(connector, now), emitter, log)
+                         dict(connector.cursor or {}), _since(connector, now), emitter, log,
+                         session=session, product=product)
         connector.last_run_at = now
         try:
             if plugin is None:
@@ -72,7 +73,7 @@ def run_connector(connector_id: int, sender: CollectorSender) -> None:
             connector.last_message = result.message
             connector.last_record_count = result.records
             connector.cursor = result.cursor or {"since": now.isoformat()}
-            if emitter.sent_spans or emitter.sent_logs:
+            if emitter.sent_spans or emitter.sent_logs or emitter.sent_metrics:
                 products.mark_seen(product, now)
                 coverage.merge(product, emitter.stats)
                 for (service, agent_name), models in emitter.stats.agents.items():

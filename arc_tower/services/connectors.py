@@ -40,18 +40,21 @@ def configure(session: Session, actor: str, product: Product, form: dict[str, st
     connector.config = config
     if secret:
         connector.secret_ref = connector_secret_name(connector.id)
-        get_secret_store().put(connector.secret_ref, secret)
+        get_secret_store().put(connector.secret_ref, secret, session=session)
     if interval_seconds:
         connector.interval_seconds = max(30, int(interval_seconds))
     connector.enabled = True
+    request_run(connector)                 # new settings (e.g. another starting point) apply at once
     audit.record(session, actor, "connector.configure", "connector", connector.id, tenant_id=product.tenant_id,
                  type=spec.key, fields=sorted(config))
     return connector
 
 
 def request_run(connector: Connector) -> None:
-    """Ask the worker to run this connector on its next tick."""
+    """Ask the worker to run this connector on its next tick, including any slower periodic work
+    (e.g. the Azure connector's resource scan, normally every 30 minutes)."""
     connector.last_run_at = None
+    connector.cursor = {k: v for k, v in (connector.cursor or {}).items() if k != "scan_at"}
 
 
 def secrets_for(connector: Connector) -> dict[str, str]:
