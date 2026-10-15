@@ -1,24 +1,24 @@
 """Azure AI Foundry: agent/model telemetry from the linked Application Insights (Log Analytics) workspace.
 
+For agents that are not mapped with the Azure platform connector: that connector already pulls these
+traces from every App Insights resource confirmed for the product, with no workspace ID to enter.
+
 Foundry agents and the Azure AI inference SDK write OpenTelemetry spans to App Insights; they land
 in the AppDependencies table with gen_ai.* keys in Properties. We query them with KQL and re-emit
 them as OTLP spans. Requires: pip install -e .[azure], and 'Log Analytics Reader' on the workspace.
 """
 from __future__ import annotations
 
-from datetime import timedelta
-
-from arc_tower.otlp.builders import SpanRecord
 from arc_tower.utils.timeutil import utcnow
 
 from ..base import ConnectorError, PullConnector, RunContext, RunResult, require
-from .common import as_int, id_bytes, parse_time
+from .app_insights import COLUMNS, GEN_AI_FILTER, span_from_row
 
-KQL = """
+KQL = f"""
 AppDependencies
-| where TimeGenerated > datetime({since})
-| where isnotempty(tostring(Properties["gen_ai.operation.name"])) or isnotempty(tostring(Properties["gen_ai.request.model"]))
-| project TimeGenerated, OperationId, Id, ParentId, Name, DurationMs, Success, AppRoleName, Properties
+| where TimeGenerated > datetime({{since}})
+| where {GEN_AI_FILTER}
+| project {COLUMNS}
 | order by TimeGenerated asc
 | take 5000
 """
@@ -41,23 +41,12 @@ class AzureFoundryConnector(PullConnector):
         for table in response.tables:
             columns = list(table.columns)
             for row in table.rows:
-                record = dict(zip(columns, row))
-                start = parse_time(record["TimeGenerated"])
-                if start is None:
+                converted = span_from_row(dict(zip(columns, row)), "azure-foundry-agent")
+                if converted is None:
                     continue
-                props = record.get("Properties") or {}
-                attrs = {k: v for k, v in props.items() if k.startswith(("gen_ai.", "session.", "user."))}
-                for key in ("gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens"):
-                    if key in attrs:
-                        attrs[key] = as_int(attrs[key])
-                service = record.get("AppRoleName") or "azure-foundry-agent"
-                ctx.emitter.span(service, SpanRecord(
-                    name=record.get("Name") or "gen_ai", start=start,
-                    end=start + timedelta(milliseconds=float(record.get("DurationMs") or 0)),
-                    trace_id=id_bytes(record.get("OperationId", ""), 16), span_id=id_bytes(record.get("Id", ""), 8),
-                    parent_span_id=id_bytes(record["ParentId"], 8) if record.get("ParentId") else b"",
-                    attributes=attrs, error=None if record.get("Success") in (True, "True", 1) else "failed"))
+                service, span = converted
+                ctx.emitter.span(service, span)
                 count += 1
-                newest = max(newest, start)
+                newest = max(newest, span.start)
         return RunResult(records=count, cursor={"since": newest.isoformat()},
                          message=f"{count} spans from App Insights")

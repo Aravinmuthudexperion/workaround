@@ -41,7 +41,8 @@ def _can_edit(ctx: TenantContext) -> bool:
 
 def _standard(org: int) -> list[tuple[str, str]]:
     standard = [(std.OVERVIEW_UID, "Agent Overview"), (std.FINOPS_UID, "FinOps"),
-                (std.QUALITY_UID, "Quality & Compliance"), (std.LIBRARY_UID, "Panel Library")]
+                (std.QUALITY_UID, "Quality & Compliance"), (std.AZURE_UID, "Product Cost & Usage"),
+                (std.LIBRARY_UID, "Panel Library")]
     if org == PLATFORM_ORG:
         standard.insert(0, (std.EXEC_UID, "Executive Overview"))
     return standard

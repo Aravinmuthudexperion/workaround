@@ -137,7 +137,7 @@ def _count_coverage(span, values: dict, stats: EnrichStats) -> set[str]:
     return classes
 
 
-def _price_for(model: str, prices: dict) -> tuple[float, float] | None:
+def price_for(model: str, prices: dict) -> tuple[float, float] | None:
     """ARC_MODEL_PRICES entry for a model name as clients actually send it:
     exact key first, then case-insensitive with any "provider/" prefix
     dropped, then the longest key the name extends with "-" - so a dated
@@ -165,7 +165,7 @@ def _stamp_cost(span, values: dict, prices: dict, stats: EnrichStats) -> None:
     if not prices or any(values.get(k) not in (None, "") for k in _CLIENT_COST_KEYS):
         return
     model = next((str(values[k]) for k in _MODEL_KEYS if values.get(k)), None)
-    price = _price_for(model, prices) if model else None
+    price = price_for(model, prices) if model else None
     if price is None:
         if model:
             stats.unpriced_models.add(model)

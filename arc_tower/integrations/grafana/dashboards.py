@@ -12,6 +12,7 @@ from . import queries as q
 OVERVIEW_UID = "arc-overview"
 FINOPS_UID = "arc-finops"
 QUALITY_UID = "arc-quality"
+AZURE_UID = "arc-azure"
 EXEC_UID = "arc-exec"
 LIBRARY_UID = "arc-library"
 
@@ -113,6 +114,92 @@ def quality() -> dict:
                        time_from="now-24h")
 
 
+def azure() -> dict:
+    """One product's Azure picture: what it costs (overall and per service), its LLM calls, how its
+    Azure services are used, and every model call. Fed by the Azure platform connector.
+    arc_azure_cost is the latest month-to-date figure per resource (Azure's bill: 8-24 h behind);
+    arc_azure_metric holds one sample per Azure minute, so summing over the range gives its total."""
+    product = 'arc_product_id=~"$product"'
+    f = f'{product},azure_resource=~"$resource"'
+    variables = [
+        p.query_var("product", "Product", "label_values(arc_azure_metric, arc_product_id)",
+                    include_all=False, multi=False),
+        p.query_var("resource", "Resource", f"label_values(arc_azure_metric{{{product}}}, azure_resource)"),
+    ]
+    def latest(metric: str, service: str = '!=""') -> str:
+        """Latest month-to-date figure per resource (series written before services were labelled are skipped)."""
+        return (f"max by (azure_service, azure_resource, currency) "
+                f"(last_over_time({metric}{{{f},azure_service{service}}}[3h]))")
+
+    billed, estimated = "arc_azure_cost", "arc_azure_cost_estimate"
+    openai = '="Azure OpenAI / AI Services"'
+
+    def total(metrics: str) -> str:
+        return f'sum(sum_over_time(arc_azure_metric{{{f},azure_metric=~"{metrics}"}}[$__range]))'
+
+    def per_minute(metrics: str, by: str) -> str:
+        return f'sum by ({by}) (arc_azure_metric{{{f},azure_metric=~"{metrics}"}})'
+
+    app_calls = "Requests|FunctionExecutionCount|OnDemandFunctionExecutionCount|AlwaysReadyFunctionExecutionCount"
+    estimate_note = ("Live list-price estimate, month to date: each service's usage (Azure Monitor, Log Analytics) "
+                     "x Azure Retail Prices, in the billing currency, refreshed hourly. Free monthly grants are "
+                     "applied; negotiated discounts and reservations are not, so the bill is the reference.")
+    billing = ("Month to date, from the Azure bill (Cost Management), in the billing currency. Azure publishes "
+               "cost 8-24 h after use (up to 48 h for a new subscription).")
+    panels = [
+        p.row("Cost (month to date)", 0),
+        p.stat("Estimated cost (live)", f"sum({latest(estimated)})", decimals=2, grid=(0, 1, 6, 4),
+               description=estimate_note),
+        p.stat("Billed by Azure", f"sum({latest(billed)})", decimals=2, grid=(6, 1, 6, 4), description=billing),
+        p.stat("Azure OpenAI (estimated)", f"sum({latest(estimated, openai)})", decimals=2, grid=(12, 1, 6, 4),
+               description=estimate_note),
+        p.stat("LLM cost from traces (time range, USD)", q.cost(product), unit="currencyUSD", decimals=4,
+               grid=(18, 1, 6, 4),
+               description="Tokens in the traced model calls x ARC_MODEL_PRICES, for the selected time range."),
+        p.table("Cost by service", [(latest(estimated), "Estimated (MTD)"), (latest(billed), "Billed (MTD)")],
+                {"azure_service": "Service", "azure_resource": "Resource", "currency": "Currency"},
+                decimals=2, grid=(0, 5, 15, 9), description=f"{estimate_note} {billing}"),
+        p.bars("Estimated cost by service", f"sum by (azure_service) ({latest(estimated)})", "{{azure_service}}",
+               grid=(15, 5, 9, 9), description=estimate_note),
+
+        p.row("LLM calls (model calls traced in the product's App Insights)", 14),
+        p.stat("LLM calls", q.llm_calls(product, "$__range"), grid=(0, 15, 4, 4)),
+        p.stat("Input tokens", q.tokens(product, direction="input"), grid=(4, 15, 4, 4)),
+        p.stat("Output tokens", q.tokens(product, direction="output"), grid=(8, 15, 4, 4)),
+        p.stat("Cost per call", f"{q.cost(product)} / clamp_min({q.llm_calls(product, '$__range')}, 1)",
+               unit="currencyUSD", decimals=5, grid=(12, 15, 4, 4)),
+        p.stat("p95 latency", q.p95_latency(product, "$__range"), unit="ms", grid=(16, 15, 4, 4),
+               thresholds=[("green", None), ("orange", 5000), ("red", 10000)]),
+        p.stat("Error rate", q.error_rate(product), unit="percent", decimals=1, grid=(20, 15, 4, 4),
+               thresholds=[("green", None), ("orange", 2), ("red", 5)]),
+        p.timeseries("LLM calls per minute by model",
+                     [(f'sum by (gen_ai_request_model) (rate(arc_calls_total{{{product},gen_ai_request_model!=""}}'
+                       f'[$__rate_interval])) * 60', "{{gen_ai_request_model}}")], grid=(0, 19, 12, 8)),
+        p.timeseries("Azure OpenAI tokens per minute by deployment",
+                     [(per_minute("ProcessedPromptTokens|GeneratedTokens", "azure_dimension, azure_metric"),
+                       "{{azure_dimension}} · {{azure_metric}}")], grid=(12, 19, 12, 8)),
+
+        p.row("Azure services usage", 27),
+        p.stat("App requests / executions", total(app_calls), grid=(0, 28, 6, 4)),
+        p.stat("HTTP 5xx", total("Http5xx"), grid=(6, 28, 6, 4), thresholds=[("green", None), ("red", 1)]),
+        p.stat("Azure OpenAI requests", total("AzureOpenAIRequests"), grid=(12, 28, 6, 4)),
+        p.stat("Storage transactions", total("Transactions"), grid=(18, 28, 6, 4)),
+        p.timeseries("App requests / executions per minute",
+                     [(per_minute(app_calls, "azure_resource"), "{{azure_resource}}")], grid=(0, 32, 8, 8)),
+        p.timeseries("Storage transactions per minute",
+                     [(per_minute("Transactions", "azure_resource"), "{{azure_resource}}")], grid=(8, 32, 8, 8)),
+        p.timeseries("Cosmos DB request units per minute",
+                     [(per_minute("TotalRequestUnits", "azure_resource"), "{{azure_resource}}")], grid=(16, 32, 8, 8)),
+
+        p.row("Traces: every LLM call", 40),
+        p.logs("LLM calls (model, tokens, latency, cost, trace ID)",
+               f'{{{product}}} | event_name="gen_ai.call"', grid=(0, 41, 24, 10)),
+    ]
+    return p.dashboard(AZURE_UID, "ARC · Product Cost & Usage", panels, variables, ["arc", "standard", "azure"],
+                       "One product: Azure cost overall and per service, LLM calls, service usage and every "
+                       "model call.", time_from="now-24h")
+
+
 def executive() -> dict:
     """Platform org only: cross-tenant rollups for CTO / CFO views."""
     f = 'arc_tenant_id=~"$tenant"'
@@ -143,7 +230,7 @@ def executive() -> dict:
 
 
 def tenant_dashboards() -> list[dict]:
-    return [overview(), finops(), quality()]
+    return [overview(), finops(), quality(), azure()]
 
 
 def library_panels() -> list[tuple[str, str, dict]]:

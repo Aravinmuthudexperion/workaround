@@ -73,8 +73,8 @@ CATALOG: dict[str, ConnectorType] = {c.key: c for c in [
         key="azure_platform", name="Azure platform (resources, metrics, cost)", category="Cloud platforms",
         mode=IngestMode.PULL, platform="azure", maturity="beta", default_interval_seconds=60,
         summary="Finds the Azure resources that belong to this product in shared subscriptions/resource "
-                "groups, starting from one resource you name, then pulls their metrics every minute, and "
-                "their cost and risks.",
+                "groups, starting from one resource you name, then pulls their metrics every minute, the "
+                "model-call traces from their Application Insights, and their cost and risks.",
         fields=(
             ConfigField("subscription_ids", "Subscription ID(s)", help="Comma separated GUIDs."),
             ConfigField("resource_groups", "Resource group(s)", required=False,
@@ -86,16 +86,21 @@ CATALOG: dict[str, ConnectorType] = {c.key: c for c in [
                         help="Optional, e.g. product=resumex. Defaults to the starting point's own product tag."),
             ConfigField("tenant_id", "Entra tenant ID", required=False),
             ConfigField("client_id", "App registration (client) ID", required=False,
-                        help="Read-only roles: Reader (+ Monitoring Reader) on the resource groups, Cost Management "
-                             "Reader. Leave the secret empty to use ARC's Managed Identity."),
+                        help="Read-only roles on the resource groups: Reader, Monitoring Reader, Log Analytics "
+                             "Reader (traces) and Cost Management Reader. Leave the secret empty to use ARC's "
+                             "Managed Identity."),
             ConfigField("client_secret", "Client secret", kind="password", secret=True, required=False),
+            ConfigField("price_currency", "Currency for cost estimates", required=False,
+                        help="ISO code of your Azure billing currency, e.g. INR, USD, EUR, so live estimates and "
+                             "the bill line up. Empty: the bill's currency once known, else USD."),
         ),
     ),
     ConnectorType(
         key="azure_foundry", name="Azure AI Foundry (App Insights)", category="Agentic platforms",
         mode=IngestMode.PULL, platform="azure-foundry", maturity="beta",
-        summary="Pulls agent and model-call telemetry from the Application Insights resource linked "
-                "to the Foundry project (KQL over the Logs API).",
+        summary="Pulls agent and model-call telemetry from one Log Analytics workspace, for Foundry agents "
+                "you do not map with the Azure platform connector. Already using that connector? You do not "
+                "need this one: it reads the traces of every App Insights resource it maps.",
         fields=(
             ConfigField("workspace_id", "Log Analytics workspace ID",
                         help="Workspace behind the App Insights resource (GUID)."),

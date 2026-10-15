@@ -18,3 +18,7 @@ sample_agent/*.env
 .DS_Store
 .vscode/
 .idea/
+
+# Azure lab state and build output
+azure_lab/.lab.env
+azure_lab/.build/

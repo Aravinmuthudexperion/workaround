@@ -1,0 +1,7 @@
+fastapi
+gunicorn
+uvicorn
+azure-cosmos
+azure-storage-blob
+openai
+azure-monitor-opentelemetry

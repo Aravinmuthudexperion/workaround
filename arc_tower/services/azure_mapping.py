@@ -70,6 +70,7 @@ class AzResource:
     subscription_id: str = ""
     location: str = ""
     kind: str = ""
+    sku: dict = field(default_factory=dict)
     tags: dict[str, str] = field(default_factory=dict)
     principal_ids: set[str] = field(default_factory=set)        # this resource's own identities
     user_identity_ids: set[str] = field(default_factory=set)    # attached user-assigned identity resources
@@ -90,6 +91,7 @@ class AzResource:
         return cls(id=str(row.get("id", "")).lower(), name=str(row.get("name", "")), type=rtype,
                    resource_group=str(row.get("resourceGroup", "")), subscription_id=str(row.get("subscriptionId", "")),
                    location=str(row.get("location", "")), kind=str(row.get("kind") or ""),
+                   sku=row.get("sku") if isinstance(row.get("sku"), dict) else {},
                    tags={str(k): str(v) for k, v in (row.get("tags") or {}).items()},
                    principal_ids=principals, user_identity_ids=uamis, properties=props)
 
@@ -376,7 +378,7 @@ def resources_query(resource_groups: list[str]) -> str:
     if resource_groups:      # names are validated by parse_resource_groups: safe to quote
         where = "| where resourceGroup in~ (" + ", ".join(f"'{g}'" for g in resource_groups) + ")\n"
     return ("resources\n" + where +
-            "| project id, name, type, kind, location, resourceGroup, subscriptionId, tags, identity, properties")
+            "| project id, name, type, kind, sku, location, resourceGroup, subscriptionId, tags, identity, properties")
 
 
 ROLE_ASSIGNMENTS_QUERY = (

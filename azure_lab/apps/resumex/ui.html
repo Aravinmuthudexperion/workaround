@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResumeX Screener</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --ink: #1b1f24; --muted: #5b6470; --line: #dde1e6; --accent: #2f5bd3;
+          --good: #1d7a46; --mid: #a66a00; --bad: #b42318; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --card: #1a1e24; --ink: #e8eaed; --muted: #9aa3ad; --line: #2c323a; --accent: #7b9cff;
+            --good: #4cc38a; --mid: #f0b44c; --bad: #ff7a6e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  p.sub { margin: 0 0 24px; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  label { display: block; font-weight: 600; margin: 14px 0 6px; }
+  label:first-child { margin-top: 0; }
+  input, select, textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px;
+                            background: var(--bg); color: var(--ink); font: inherit; }
+  textarea { min-height: 170px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  button { padding: 10px 18px; border: 0; border-radius: 7px; background: var(--accent); color: #fff; font: inherit;
+           font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button:disabled { opacity: .6; cursor: wait; }
+  #status { color: var(--muted); }
+  #result { margin-top: 20px; display: none; }
+  .score { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  .score b { font-size: 40px; line-height: 1; }
+  .pill { padding: 3px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; border: 1px solid currentColor; }
+  .shortlist { color: var(--good); } .maybe { color: var(--mid); } .reject { color: var(--bad); }
+  ul { margin: 8px 0 0; padding-left: 20px; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 12px; word-break: break-all; }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ResumeX Screener</h1>
+  <p class="sub">Scores a résumé against the screening rubric with Azure OpenAI. Each run is archived in Blob Storage.</p>
+
+  <form class="card" id="form">
+    <div class="row">
+      <div>
+        <label for="candidate">Candidate</label>
+        <input id="candidate" value="Priya Raman">
+      </div>
+      <div>
+        <label for="role">Role</label>
+        <select id="role">
+          <option>Backend Engineer</option><option>Data Analyst</option>
+          <option>Product Manager</option><option>DevOps Engineer</option>
+        </select>
+      </div>
+    </div>
+    <label for="resume">Résumé</label>
+    <textarea id="resume" required>6 years Python and Go. Built payment APIs handling 2k requests/second at a fintech. Led the migration of 40 services to Kubernetes, cutting deploy time from 1 hour to 8 minutes. AWS certified. B.Tech CSE, 2019.</textarea>
+    <div class="actions">
+      <button type="submit" id="go">Screen résumé</button>
+      <button type="button" class="ghost" id="sample">Try another sample</button>
+      <span id="status"></span>
+    </div>
+  </form>
+
+  <section class="card" id="result"></section>
+</main>
+<script>
+  const code = new URLSearchParams(location.search).get("code") || "";
+  const samples = [
+    "Fresh graduate, B.Tech CSE 2025. Internship building Power BI dashboards. SQL and pandas projects on GitHub.",
+    "8 years product management in e-commerce. Launched checkout redesign (+12% conversion). Career gap 2021-2023.",
+    "4 years SRE: Terraform, Azure, on-call lead. Cut incident MTTR by 40%. Wrote runbooks and SLOs for 30 services.",
+    "Teacher for 10 years, completed a 6-month data analytics bootcamp. Excel and Tableau portfolio.",
+  ];
+  let next = 0;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+
+  $("sample").onclick = () => { $("resume").value = samples[next++ % samples.length]; };
+
+  $("form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("go").disabled = true;
+    $("status").textContent = "Screening…";
+    const out = $("result");
+    try {
+      const resp = await fetch("screen?code=" + encodeURIComponent(code), {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({candidate: $("candidate").value, role: $("role").value, resume: $("resume").value}),
+      });
+      const data = await resp.json().catch(() => ({error: "HTTP " + resp.status}));
+      if (!resp.ok) throw new Error(data.error || "HTTP " + resp.status);
+      const verdict = String(data.verdict || "unknown").toLowerCase();
+      out.innerHTML =
+        `<div class="score"><b>${esc(data.score ?? "–")}</b><span>/ 100</span>` +
+        `<span class="pill ${esc(verdict)}">${esc(verdict)}</span></div>` +
+        `<div><strong>${esc(data.candidate)}</strong> · ${esc(data.role)}</div>` +
+        `<ul>${(data.reasons || []).map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` +
+        `<div class="meta">Archived as resumes/${esc(data.id)}</div>`;
+      $("status").textContent = "";
+    } catch (err) {
+      out.innerHTML = `<div class="error">Screening failed: ${esc(err.message)}</div>`;
+      $("status").textContent = "";
+    }
+    out.style.display = "block";
+    $("go").disabled = false;
+  };
+</script>
+</body>
+</html>

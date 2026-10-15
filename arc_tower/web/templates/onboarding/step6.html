@@ -6,6 +6,7 @@
   <a class="card" href="/dashboards?uid=arc-overview&product={{ product.slug }}"><h2>Agent overview →</h2><p class="muted">Adoption, latency, errors, tokens and error logs.</p></a>
   <a class="card" href="/dashboards?uid=arc-finops&product={{ product.slug }}"><h2>FinOps →</h2><p class="muted">Spend by product, agent and model; cost per 1k calls.</p></a>
   <a class="card" href="/dashboards?uid=arc-quality&product={{ product.slug }}"><h2>Quality &amp; compliance →</h2><p class="muted">Evaluation scores, drift, PII masked, guardrail events.</p></a>
+  {% if product.connector_type == "azure_platform" %}<a class="card" href="/dashboards?uid=arc-azure&product={{ product.slug }}"><h2>Cost &amp; usage →</h2><p class="muted">Overall and per-service Azure cost, LLM calls, service usage and every model call.</p></a>{% endif %}
   <a class="card" href="/traces?product={{ product.id }}"><h2>Trace explorer →</h2><p class="muted">Every conversation, drill down into Langfuse.</p></a>
   <a class="card" href="/agents?product={{ product.id }}"><h2>Agent registry →</h2><p class="muted">Agents discovered from telemetry - add owners and risk class.</p></a>
   <a class="card" href="/products/{{ product.id }}"><h2>Product page →</h2><p class="muted">KPIs vs targets, keys, coverage.</p></a>

@@ -14,10 +14,11 @@ def _target(expr: str, legend: str = "", ref: str = "A", instant: bool = False) 
 
 def stat(title: str, expr: str, unit: str = "short", grid: tuple[int, int, int, int] = (0, 0, 4, 4),
          decimals: int | None = None, thresholds: list[tuple[str, float | None]] | None = None,
-         description: str = "") -> dict:
+         description: str = "", no_value: str = "0") -> dict:
+    """no_value: shown when the query returns nothing (a count with no events is 0, not "No data")."""
     steps = [{"color": color, "value": value} for color, value in (thresholds or [("blue", None)])]
     defaults: dict = {"unit": unit, "thresholds": {"mode": "absolute", "steps": steps},
-                      "color": {"mode": "thresholds"}}
+                      "color": {"mode": "thresholds"}, "noValue": no_value}
     if decimals is not None:
         defaults["decimals"] = decimals
     return {
@@ -53,12 +54,43 @@ def bars(title: str, expr: str, legend: str, unit: str = "short",
     """Horizontal bar gauge of an instant query: ranking by product / agent / model."""
     return {
         "type": "bargauge", "title": title, "description": description, "datasource": PROM,
-        "gridPos": _grid(grid), "targets": [_target(expr, legend, instant=True)],
+        "gridPos": _grid(grid), "targets": [_target(expr, instant=True)],
         "fieldConfig": {"defaults": {"unit": unit, "min": 0, "color": {"mode": "palette-classic"}},
                         "overrides": []},
         "options": {"orientation": "horizontal", "displayMode": "basic", "showUnfilled": True,
                     "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
                     "valueMode": "color", "namePlacement": "left", "sizing": "auto"},
+    }
+
+
+def table(title: str, values: list[tuple[str, str]], columns: dict[str, str], unit: str = "short",
+          decimals: int | None = None, grid: tuple[int, int, int, int] = (0, 0, 12, 8), description: str = "") -> dict:
+    """Instant queries as one table, a row per label set. values: [(expr, column header)], merged on the
+    labels; columns maps label -> header (shown in this order, before the values). Sorted by the first
+    value, high to low, with a total row."""
+    refs = "ABCDEFGH"
+    targets = []
+    for i, (expr, _) in enumerate(values):
+        target = _target(expr, ref=refs[i], instant=True)
+        target["format"] = "table"
+        targets.append(target)
+    # A single query's value column is "Value"; merged queries get "Value #A", "Value #B", ...
+    raw = ["Value"] if len(values) == 1 else [f"Value #{refs[i]}" for i in range(len(values))]
+    headers = [header for _, header in values]
+    value_props = [{"id": "unit", "value": unit}] + ([{"id": "decimals", "value": decimals}] if decimals is not None else [])
+    transformations = [{"id": "merge", "options": {}}] if len(values) > 1 else []
+    transformations += [
+        {"id": "filterFieldsByName", "options": {"include": {"names": [*columns, *raw]}}},        # only these
+        {"id": "organize", "options": {"indexByName": {name: i for i, name in enumerate([*columns, *raw])},
+                                       "renameByName": {**columns, **dict(zip(raw, headers))}}}]
+    return {
+        "type": "table", "title": title, "description": description, "datasource": PROM, "gridPos": _grid(grid),
+        "targets": targets, "transformations": transformations,
+        "fieldConfig": {"defaults": {"unit": "short", "custom": {"align": "auto"}},
+                        "overrides": [{"matcher": {"id": "byName", "options": h}, "properties": value_props}
+                                      for h in headers]},
+        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": headers[0], "desc": True}],
+                    "footer": {"show": True, "reducer": ["sum"], "fields": headers}},
     }
 
 

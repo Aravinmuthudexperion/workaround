@@ -25,12 +25,16 @@ def infrastructure() -> list[Service]:
                                f"--storage.tsdb.path={DATA / 'prometheus'}",
                                f"--web.listen-address=127.0.0.1:{PORTS['prometheus']}",
                                "--web.enable-otlp-receiver", "--web.enable-lifecycle",
+                               # `increase(x[w] anchored)`: exact counts for dashboards (no extrapolation)
+                               "--enable-feature=promql-extended-range-selectors,promql-experimental-functions",
                                "--storage.tsdb.retention.time=90d"],
                 health_url=f"http://127.0.0.1:{PORTS['prometheus']}/-/ready"),
         Service("prom-label-proxy", [_binary("prom-label-proxy"), "-label=arc_tenant_id",
                                      f"-upstream=http://127.0.0.1:{PORTS['prometheus']}",
                                      f"-insecure-listen-address=127.0.0.1:{PORTS['prom_label_proxy']}",
-                                     "-enable-label-apis"],
+                                     "-enable-label-apis",
+                                     "-enable-promql-extended-range-selectors",    # same PromQL as Prometheus
+                                     "-enable-promql-experimental-functions"],
                 port=PORTS["prom_label_proxy"]),
         Service("otel-collector", [_binary("otelcol"), f"--config={cfg / 'otel-collector.yaml'}"],
                 health_url=f"http://127.0.0.1:{PORTS['collector_health']}/"),

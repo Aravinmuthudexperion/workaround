@@ -150,8 +150,8 @@ tests/             pytest suite
 |---|---|---|
 | Custom agent (OpenTelemetry), LangChain/LangGraph, n8n | push | available |
 | Demo enterprise platform | pull | available (simulated data) |
-| Azure platform (resources, metrics, cost) | pull | beta: tested against a simulated Azure, not yet a live subscription (`pip install -e .[azure]`) |
-| Azure AI Foundry (App Insights KQL) | pull | beta: built against documented APIs, not yet validated on a live account (`pip install -e .[azure]`) |
+| Azure platform (resources, metrics, traces, cost) | pull | beta: validated on a live subscription with the [`azure_lab/`](azure_lab/README.md) estate (`pip install -e .[azure]`) |
+| Azure AI Foundry (App Insights KQL) | pull | beta: only for Foundry agents not mapped with the Azure platform connector (`pip install -e .[azure]`) |
 | AWS Bedrock (CloudWatch invocation logs) | pull | beta, as above (`pip install -e .[aws]`) |
 | ServiceNow (Table API), Salesforce (SOQL) | pull | beta, as above |
 | Freshdesk, Airia | pull | planned |
@@ -171,7 +171,11 @@ only read access, and a person confirms it in onboarding step 3 (or on the produ
 
 Resources other apps also use are marked **shared**; the reviewer sets this product's share of their
 cost. The connector runs every minute and pulls the latest 1-minute Azure Monitor value of each
-metric (`arc_azure_metric`; Azure's finest grain, published 1-3 minutes after the fact). It re-scans
+metric (`arc_azure_metric`; Azure's finest grain, published 1-3 minutes after the fact), asking each
+resource only for the metrics it publishes (a Flex Consumption function app has execution counts, not
+`Requests`). It also reads new `gen_ai.*` spans from every App Insights resource in the map, from the
+Log Analytics workspace behind it (found by the scan; no workspace ID to enter; Log Analytics Reader),
+so traces and the agent dashboards need no second connector. It re-scans
 the resources every 30 minutes (or at once on "Run now" / saving the connector), and pulls month-to-date
 cost per resource every hour (`arc_azure_cost`, only what can be attributed). Scans also flag risks:
 public network access, key-based auth, anonymous blob access, missing tags.
@@ -180,7 +184,16 @@ Access for the ARC identity (all read-only): **Reader** (+ **Monitoring Reader**
 groups and **Cost Management Reader**. Sign-in is an app registration's client secret, or ARC's
 Managed Identity when the secret is left empty. Code: `services/azure_mapping.py` (mapping, pure),
 `services/azure_resources.py` (review, cost), `connectors/plugins/azure_platform.py`,
-`integrations/azure/client.py`.
+`connectors/plugins/app_insights.py` (App Insights rows to spans), `integrations/azure/client.py`.
+Live cost estimate: because the bill lags 8-24 h, the connector also estimates each resource's month-to-date
+cost every hour from its usage (Azure Monitor, the workspace `Usage` table, OpenAI deployments) and Azure's
+public list prices (Retail Prices API, in the connector's *Currency for cost estimates*), as
+`arc_azure_cost_estimate`. Free monthly grants are applied; negotiated discounts and reservations are not, so
+the bill stays the reference. Rules per service: `services/azure_estimate.py` (OpenAI tokens, Functions
+Flex/Consumption, App Service plans, Storage operations and capacity, Key Vault, Log Analytics ingestion,
+Cosmos DB serverless); other types show "not estimated". Prices: `integrations/azure/pricing.py`.
+Dashboard: **ARC · Product Cost & Usage** (`arc-azure`): estimated and billed cost per service and in total,
+LLM calls, Azure service usage and every model call.
 
 To add a platform: add a `ConnectorType` to `connectors/catalog.py` and a `PullConnector`
 subclass in `connectors/plugins/`, then register it in `connectors/registry.py`.

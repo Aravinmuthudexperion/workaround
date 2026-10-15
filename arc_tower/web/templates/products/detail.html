@@ -91,6 +91,7 @@
       <a class="btn" href="/dashboards?uid=arc-overview&product={{ product.slug }}">Agent overview</a>
       <a class="btn" href="/dashboards?uid=arc-finops&product={{ product.slug }}">FinOps</a>
       <a class="btn" href="/dashboards?uid=arc-quality&product={{ product.slug }}">Quality &amp; compliance</a>
+      {% if azure %}<a class="btn" href="/dashboards?uid=arc-azure&product={{ product.slug }}">Cost &amp; usage</a>{% endif %}
     </div>
     {% if can_edit %}
     <hr>

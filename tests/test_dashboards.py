@@ -43,3 +43,25 @@ def test_library_panels_are_unlinked_in_place_including_inside_rows():
 def test_unknown_library_panels_stay_linked():
     copy = editable_copy(_standard(), "x", {})
     assert copy["panels"][1]["libraryPanel"]["uid"] == "arc-lib-cost"
+
+
+def test_product_cost_dashboard_is_provisioned_for_every_tenant_and_filters_by_product():
+    from arc_tower.integrations.grafana import dashboards as std
+
+    board = next(d for d in std.tenant_dashboards() if d["uid"] == std.AZURE_UID)
+    targets = [t for panel in board["panels"] for t in panel.get("targets", [])]
+    assert targets and all('arc_product_id=~"$product"' in t["expr"] for t in targets)
+    assert all(t["expr"].count("(") == t["expr"].count(")") and t["expr"].count("{") == t["expr"].count("}")
+               for t in targets)
+    titles = {panel["title"] for panel in board["panels"]}
+    assert {"Estimated cost (live)", "Billed by Azure", "Cost by service", "LLM calls", "Traces: every LLM call"} <= titles
+    assert [v["name"] for v in board["templating"]["list"]] == ["product", "resource"]
+
+
+def test_counts_are_exact_not_extrapolated():
+    from arc_tower.integrations.grafana import queries as q
+
+    expr = q.llm_calls('arc_product_id="p"', "6h")
+    assert expr.startswith('sum((increase(arc_calls_total{arc_product_id="p",gen_ai_request_model!=""}[6h] anchored)')
+    assert "first_over_time(" in expr                             # a series' first batch is counted too
+    assert "or" in q.error_rate('arc_product_id="p"')            # 0 % rather than no data without errors

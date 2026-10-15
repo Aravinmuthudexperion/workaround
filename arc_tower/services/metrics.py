@@ -96,24 +96,18 @@ def tenant_rollup(sel: str, window: str = "24h") -> dict[str, dict[str, float]]:
 RANGE_WINDOWS = {"6h": "6h", "24h": "24h", "7d": "7d"}
 
 
-def _quantile(q_value: float, sel: str, window: str, by: str | None) -> str:
-    grouping = f"le, {by}" if by else "le"
-    return (f"histogram_quantile({q_value}, sum by ({grouping}) "
-            f'(rate(arc_duration_milliseconds_bucket{{{sel},gen_ai_request_model!=""}}[{window}])))')
-
-
 def chart_expr(metric: str, sel: str, window: str, by: str | None) -> str:
-    grouping = f" by ({by})" if by else ""
     builders = {
-        "calls": lambda: f'sum{grouping} (increase(arc_calls_total{{{sel},gen_ai_request_model!=""}}[{window}]))',
+        "calls": lambda: q.calls_by(by, sel, window) if by else q.llm_calls(sel, window),
         "cost": lambda: q.cost(sel, window, by=by),
         "tokens": lambda: q.tokens(sel, window, by=by),
         "input_tokens": lambda: q.tokens(sel, window, by=by, direction="input"),
         "output_tokens": lambda: q.tokens(sel, window, by=by, direction="output"),
-        "p95_latency": lambda: _quantile(0.95, sel, window, by),
-        "p50_latency": lambda: _quantile(0.5, sel, window, by),
+        "p95_latency": lambda: q.p95_latency(sel, window, by),
+        "p50_latency": lambda: q.p95_latency(sel, window, by, quantile=0.5),
         "error_rate": lambda: q.error_rate(sel, window, by=by),
-        "pii_masked": lambda: f"sum{grouping} (increase(arc_pii_masked{{{sel}}}[{window}]))",
+        "pii_masked": lambda: (f"sum by ({by}) ({q.counted(f'arc_pii_masked{{{sel}}}', window)})" if by
+                               else q.pii_masked(sel, window)),
     }
     return builders[metric]()
 

@@ -82,13 +82,18 @@ def attributed_cost(row: ProductResource) -> tuple[float | None, str]:
     """(this product's part of the resource's cost, basis). None when it cannot be attributed yet."""
     if row.cost_mtd is None:
         return None, "no cost data"
+    return attribute(row, row.cost_mtd)
+
+
+def attribute(row: ProductResource, amount: float) -> tuple[float | None, str]:
+    """This product's part of an amount of the resource's cost (billed or estimated), and the basis."""
     if row.status == PROPOSED:
         return None, "awaiting review"
     if not row.shared:
-        return row.cost_mtd, "dedicated"
+        return amount, "dedicated"
     if row.share_pct is None:
         return None, "shared - set this product's share"
-    return row.cost_mtd * row.share_pct / 100.0, f"shared - {row.share_pct:g}% allocated"
+    return amount * row.share_pct / 100.0, f"shared - {row.share_pct:g}% allocated"
 
 
 @dataclass
