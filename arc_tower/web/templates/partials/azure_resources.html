@@ -10,7 +10,7 @@
     <p class="muted">No scan yet. Save the connector in step 2; the first scan runs within a minute.</p>
   {% else %}
   {% set c = azure.cost %}
-  <p class="faint">ARC proposed these resources from the starting point using identity, hosting, tag, network and naming evidence. Confirm what belongs to {{ product.name }}, reject the rest. For a shared resource, set this product's share of its cost.</p>
+  <p class="faint">ARC proposed these resources from the starting point using identity, hosting, tag, network and naming evidence, and the calls the product's App Insights recorded. Confirm what belongs to {{ product.name }}, reject the rest. For a shared resource, set this product's share of its cost.</p>
   {% if c.currency %}
   <div class="grid grid-4 mt">
     <div><div class="faint">Cost this month</div><strong>{{ "%.2f"|format(c.total) }} {{ c.currency }}</strong></div>
@@ -44,5 +44,35 @@
     </tr>
   {% endfor %}
   </tbody></table>
+  {% if can_edit and azure.choice_count %}
+  <details class="mt">
+    <summary>Add resources ARC did not propose ({{ azure.choice_count }} more in the scanned scope)</summary>
+    <p class="faint mt">A service the app reaches with an API key leaves no evidence ARC can see with read-only access. Tick it here: it is confirmed at once and kept on every scan until you reject it.</p>
+    <form method="post" action="/products/{{ product.id }}/azure-resources/add" class="mt" data-picker>{{ m.csrf() }}
+      <input type="hidden" name="back" value="{{ back }}">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" data-picker-search placeholder="Search by name, kind or resource group" aria-label="Search resources" style="flex:1;min-width:220px">
+        <select data-picker-type aria-label="Filter by service">
+          <option value="">All services</option>
+          {% for label, items in azure.choices %}<option value="{{ label }}">{{ label }} ({{ items|length }})</option>{% endfor %}
+        </select>
+        <button class="btn small primary">Add selected</button>
+      </div>
+      <div class="mt" style="max-height:420px;overflow:auto">
+      {% for label, items in azure.choices %}
+        <fieldset data-picker-group="{{ label }}" style="border:0;padding:0;margin:0 0 12px">
+          <legend><strong>{{ label }}</strong> <span class="faint">{{ items|length }}</span></legend>
+          {% for i in items %}
+          <label data-picker-item="{{ (i.name ~ ' ' ~ i.kind ~ ' ' ~ i.short_type ~ ' ' ~ i.resource_group)|lower }}" style="display:flex;gap:8px;align-items:baseline;padding:3px 0">
+            <input type="checkbox" name="item_ids" value="{{ i.id }}">
+            <span>{{ i.name }} <span class="faint">{% if i.kind %}{{ i.kind }} · {% endif %}{{ i.short_type }} · {{ i.resource_group }}</span></span>
+          </label>
+          {% endfor %}
+        </fieldset>
+      {% endfor %}
+      </div>
+    </form>
+  </details>
+  {% endif %}
   {% endif %}
 </div>

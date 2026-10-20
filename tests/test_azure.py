@@ -149,6 +149,41 @@ def test_map_rejects_unknown_starting_point_and_bad_scope():
     assert "in~ ('rg-a', 'rg-b')" in azure_mapping.resources_query(azure_mapping.parse_resource_groups("rg-a,rg-b"))
 
 
+def test_map_keeps_resources_added_by_hand():
+    extra = {COSMOS.lower(): [("picked", 1.0, "Added by lead")],
+             rid("Microsoft.Storage/storageAccounts", "gone").lower(): [("picked", 1.0, "Added by lead")]}
+    found = {c.resource.name: c for c in build_product_map(Inventory.from_graph(RESOURCES, ASSIGNMENTS),
+                                                           "func-warranty-processor", None, extra)}
+    cosmos = found["cosmos-hd-chat"]
+    assert cosmos.level == "high" and cosmos.evidence == ["Added by lead"]
+    assert cosmos.shared_with == ["app-dealerassist-web", "tagged product=dealerassist"]   # still detected
+    assert "gone" not in found                                     # out of scope now: nothing to map
+
+
+def test_call_targets_link_the_one_resource_answering_on_that_host():
+    lang = rid("Microsoft.CognitiveServices/accounts", "lang-hd-clu")
+    api = rid("Microsoft.Web/sites", "app-scoring-api")
+    twin = rid("Microsoft.Web/sites", "app-scoring-twin")
+    resources = Inventory.from_graph([
+        _res(lang, "Microsoft.CognitiveServices/accounts", customSubDomainName="lang-hd-clu",
+             endpoint="https://lang-hd-clu.cognitiveservices.azure.com/"),
+        _res(COSMOS, "Microsoft.DocumentDB/databaseAccounts",
+             documentEndpoint="https://cosmos-hd-chat.documents.azure.com:443/"),
+        _res(api, "Microsoft.Web/sites", defaultHostName="app-scoring-api.azurewebsites.net",
+             hostNames=["app-scoring-api.azurewebsites.net", "score.hd.example"]),
+        _res(twin, "Microsoft.Web/sites", hostNames=["score.hd.example"]),       # same custom domain
+    ], []).resources
+    calls = {"lang-hd-clu.openai.azure.com": 3, "lang-hd-clu.cognitiveservices.azure.com:443": 5,
+             "cosmos-hd-chat.documents.azure.com | chatdb": 40, "https://app-scoring-api.azurewebsites.net/v1": 2,
+             "score.hd.example": 9, "login.microsoftonline.com": 50}
+    found = azure_mapping.match_calls(resources, calls)
+    assert found[lang.lower()] == (8, ["lang-hd-clu.openai.azure.com", "lang-hd-clu.cognitiveservices.azure.com"])
+    assert found[COSMOS.lower()] == (40, ["cosmos-hd-chat.documents.azure.com"])
+    assert found[api.lower()] == (2, ["app-scoring-api.azurewebsites.net"])
+    assert twin.lower() not in found                     # a host two resources answer on proves nothing
+    assert api.lower() not in azure_mapping.match_calls(resources, calls, skip={api.lower()})
+
+
 # --- ARM client parsing --------------------------------------------------------------------
 
 def _client(handler) -> AzureClient:
@@ -286,9 +321,13 @@ class FakeAzure:
     def created_times(self, scope):
         return {}
 
+    CALLS: list[dict] = []          # AppDependencies targets the scan's call detection sees
+
     def logs_query(self, workspace_id, query, start, end):
         """Like KQL: rows ingested strictly after the datetime(...) in the query."""
         assert workspace_id == WORKSPACE_GUID and f"_ResourceId =~ '{APPI.lower()}'" in query
+        if "summarize calls = count() by Target" in query:
+            return self.CALLS
         self.log_queries.append(query)
         after = query.split("ingestion_time() > datetime(", 1)[1].split(")", 1)[0]
         return [self.SPAN_ROW] if self.INGESTED > after else []      # same format: text order is time order
@@ -543,3 +582,141 @@ def test_worker_asks_each_resource_only_for_metrics_it_publishes(monkeypatch):
     with session_scope() as db:
         message = db.get(Connector, connector_id).last_message
         assert "unavailable" not in message, message
+
+
+# --- resources the mapping cannot see: observed calls and manual picks ----------------------
+
+LANG = rid("Microsoft.CognitiveServices/accounts", "lang-hd-clu")
+
+
+class CallingAzure(FakeAzure):
+    """The warranty app calls a Language resource with an API key: no role assignment, no tag, no name match."""
+    CALLS = [{"Target": "lang-hd-clu.cognitiveservices.azure.com", "calls": 1200},
+             {"Target": "login.microsoftonline.com", "calls": 80}]
+
+    def resource_graph(self, query, subscriptions):
+        rows = super().resource_graph(query, subscriptions)
+        if "authorizationresources" in query:
+            return rows
+        lang = _res(LANG, "Microsoft.CognitiveServices/accounts", customSubDomainName="lang-hd-clu")
+        lang["kind"] = "TextAnalytics"
+        return [*rows, lang]
+
+    def openai_deployments(self, account_id):
+        return {} if account_id == LANG.lower() else super().openai_deployments(account_id)
+
+
+def _azure_product(monkeypatch, fake, name: str, **config) -> tuple[int, int]:
+    from arc_tower.db.session import session_scope
+    from arc_tower.services import connectors, products, tenants
+
+    monkeypatch.setattr(AzurePlatformConnector, "client_factory", staticmethod(lambda *a: fake))
+    with session_scope() as db:
+        tenant = tenants.create_tenant(db, "test", f"{name} Co", f"{name.lower()}-co")
+        product = products.create_product(db, "test", tenant, f"{name} Claims", "azure_platform")
+        connector = connectors.configure(db, "test", product, {
+            "subscription_ids": SUB, "starting_point": "func-warranty-processor", **config})
+        return product.id, connector.id
+
+
+def test_scan_links_a_service_the_app_calls_with_a_key(monkeypatch):
+    from arc_tower.connectors import worker
+    from arc_tower.db.models import Connector, Product
+    from arc_tower.db.session import session_scope
+
+    product_id, connector_id = _azure_product(monkeypatch, CallingAzure(), "Calls")
+    worker.run_connector(connector_id, FakeSender())
+    with session_scope() as db:
+        connector = db.get(Connector, connector_id)
+        assert "call detection: 1 called resources found in 1 App Insights" in connector.last_message
+        rows = {r.name: r for r in db.get(Product, product_id).azure_resources}
+        lang = rows["lang-hd-clu"]
+        # Trusted as far as App Insights is the app's own: 0.95 x 0.93 (hidden-link 0.9 and name 0.3).
+        assert rows["appi-warranty"].score == pytest.approx(0.93)
+        assert lang.level == "high" and lang.score == pytest.approx(0.883) and lang.status == "proposed"
+        assert lang.evidence == ["App Insights appi-warranty recorded 1,200 calls to it in 7 days "
+                                 "(lang-hd-clu.cognitiveservices.azure.com)"]
+    worker.run_connector(connector_id, FakeSender())                 # no rescan: the note stays visible
+    with session_scope() as db:
+        assert "call detection: 1 called resources" in db.get(Connector, connector_id).last_message
+
+
+def test_scan_says_when_call_detection_cannot_read_the_workspace(monkeypatch):
+    from arc_tower.connectors import worker
+    from arc_tower.db.models import Connector, Product
+    from arc_tower.db.session import session_scope
+
+    class CentralWorkspace(CallingAzure):            # the workspace sits in a resource group ARC cannot read
+        def resource_graph(self, query, subscriptions):
+            return [r for r in super().resource_graph(query, subscriptions) if r.get("id") != LAW]
+
+        def resource(self, resource_id, api_version):
+            raise AzureError("AuthorizationFailed", 403)
+
+    product_id, connector_id = _azure_product(monkeypatch, CentralWorkspace(), "Central")
+    worker.run_connector(connector_id, FakeSender())
+    with session_scope() as db:
+        connector = db.get(Connector, connector_id)
+        message = connector.last_message
+        assert connector.last_status == "ok", message
+        assert "call detection: off (appi-warranty: workspace law-hd-central not readable - grant Log " \
+               "Analytics Reader on it)" in message
+        assert "lang-hd-clu" not in {r.name for r in db.get(Product, product_id).azure_resources}
+
+
+def test_reviewer_adds_a_resource_arc_did_not_propose(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from arc_tower.connectors import worker
+    from arc_tower.db.models import AzureInventoryItem, Connector, Product
+    from arc_tower.db.session import session_scope
+    from arc_tower.services import connectors, users
+    from arc_tower.web.app import app
+
+    product_id, connector_id = _azure_product(monkeypatch, FakeAzure(), "Picker")
+    with session_scope() as db:
+        users.create_user(db, "test", "lead@picker.test", password="pw-123456", is_platform_admin=True)
+    worker.run_connector(connector_id, FakeSender())
+
+    web = TestClient(app)
+    assert web.post("/login", data={"email": "lead@picker.test", "password": "pw-123456"},
+                    follow_redirects=False).status_code == 303
+    page = web.get(f"/products/{product_id}/onboard/3")
+    assert "Add resources ARC did not propose" in page.text and "cosmos-hd-chat" in page.text
+    csrf = page.text.split('name="csrf_token" value="', 1)[1].split('"', 1)[0]
+    with session_scope() as db:
+        product = db.get(Product, product_id)
+        offered = {i.name for i in azure_resources.choices(product)}
+        assert "cosmos-hd-chat" in offered and "sthdshared" not in offered        # proposed ones are listed already
+        item_id = next(i.id for i in product.azure_inventory if i.name == "cosmos-hd-chat")
+
+    resp = web.post(f"/products/{product_id}/azure-resources/add",
+                    data={"csrf_token": csrf, "item_ids": [str(item_id)], "back": f"/products/{product_id}/onboard/3"},
+                    follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"].endswith("/onboard/3")
+    with session_scope() as db:
+        row = next(r for r in db.get(Product, product_id).azure_resources if r.name == "cosmos-hd-chat")
+        assert row.status == "confirmed" and row.evidence == ["Added by lead@picker.test"]
+        assert "scan_at" not in db.get(Connector, connector_id).cursor                # rescan requested
+
+    worker.run_connector(connector_id, FakeSender())                     # the scan keeps the pick
+    with session_scope() as db:
+        product = db.get(Product, product_id)
+        row = next(r for r in product.azure_resources if r.name == "cosmos-hd-chat")
+        assert row.present and row.status == "confirmed" and row.evidence == ["Added by lead@picker.test"]
+        assert row.shared_with == ["app-dealerassist-web", "tagged product=dealerassist"]
+        assert "cosmos-hd-chat" not in {i.name for i in azure_resources.choices(product)}
+        azure_resources.decide(db, "lead@picker.test", product, row.id, "rejected")
+        assert db.get(AzureInventoryItem, item_id).picked_by is None
+        connectors.request_run(db.get(Connector, connector_id))
+
+    worker.run_connector(connector_id, FakeSender())                     # rejected: no longer forced in
+    with session_scope() as db:
+        product = db.get(Product, product_id)
+        row = next(r for r in product.azure_resources if r.name == "cosmos-hd-chat")
+        assert not row.present and row.status == "rejected"
+        assert "cosmos-hd-chat" in {i.name for i in azure_resources.choices(product)}
+
+    resp = web.post(f"/products/{product_id}/azure-resources/add", data={"csrf_token": csrf, "item_ids": ["999999"]},
+                    follow_redirects=False)
+    assert resp.status_code == 303                                       # unknown id: an error message, no change

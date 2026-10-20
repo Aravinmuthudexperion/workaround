@@ -55,3 +55,30 @@ class ProductResource(TimestampMixin, Base):
     @property
     def short_type(self) -> str:
         return self.type.split("/", 1)[-1]
+
+
+class AzureInventoryItem(Base):
+    """Every resource the last scan saw in the product's scope, so a reviewer can add one ARC did not propose
+    (a service the app reaches with an API key leaves no evidence Reader can see)."""
+    __tablename__ = "azure_inventory"
+    __table_args__ = (UniqueConstraint("product_id", "resource_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    resource_id: Mapped[str] = mapped_column(String(512))           # lower-case ARM id
+    name: Mapped[str] = mapped_column(String(200))
+    type: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(100), default="")     # e.g. OpenAI, TextAnalytics, StorageV2
+    resource_group: Mapped[str] = mapped_column(String(100), default="")
+    location: Mapped[str] = mapped_column(String(64), default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Set when a reviewer adds it by hand: every scan then maps it, whatever the evidence.
+    picked_by: Mapped[str | None] = mapped_column(String(200))
+    picked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    product: Mapped[Product] = relationship(back_populates="azure_inventory")
+
+    @property
+    def short_type(self) -> str:
+        return self.type.split("/", 1)[-1]

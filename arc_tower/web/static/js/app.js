@@ -127,4 +127,32 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () { loadCharts(document); });
+
+  // --- "add resources" picker: filter the scanned resources by text and service -------------
+  function filterPicker(form) {
+    var text = form.querySelector("[data-picker-search]").value.trim().toLowerCase();
+    var service = form.querySelector("[data-picker-type]").value;
+    form.querySelectorAll("[data-picker-group]").forEach(function (group) {
+      var groupOn = !service || group.getAttribute("data-picker-group") === service;
+      var shown = 0;
+      group.querySelectorAll("[data-picker-item]").forEach(function (item) {
+        var on = groupOn && (!text || item.getAttribute("data-picker-item").indexOf(text) !== -1);
+        item.style.display = on ? "" : "none";
+        if (on) shown++;
+      });
+      group.style.display = shown ? "" : "none";
+    });
+  }
+
+  ["input", "change"].forEach(function (name) {
+    document.addEventListener(name, function (evt) {
+      var form = evt.target.closest && evt.target.closest("[data-picker]");
+      if (form && evt.target.matches("[data-picker-search], [data-picker-type]")) filterPicker(form);
+    });
+  });
+
+  // Enter in the search box filters; it must not submit the half-chosen selection.
+  document.addEventListener("keydown", function (evt) {
+    if (evt.key === "Enter" && evt.target.matches && evt.target.matches("[data-picker-search]")) evt.preventDefault();
+  });
 })();

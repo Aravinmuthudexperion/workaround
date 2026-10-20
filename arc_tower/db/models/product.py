@@ -12,7 +12,7 @@ from arc_tower.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from .agent import Agent
-    from .azure import ProductResource
+    from .azure import AzureInventoryItem, ProductResource
     from .connector import Connector
     from .kpi import Target
     from .tenant import Tenant
@@ -53,6 +53,8 @@ class Product(TimestampMixin, Base):
     azure_resources: Mapped[list[ProductResource]] = relationship(
         back_populates="product", cascade="all, delete-orphan",
         order_by="(ProductResource.is_anchor.desc(), ProductResource.score.desc(), ProductResource.name)")
+    azure_inventory: Mapped[list[AzureInventoryItem]] = relationship(
+        back_populates="product", cascade="all, delete-orphan", order_by="AzureInventoryItem.name")
 
     @property
     def is_push(self) -> bool:

@@ -22,16 +22,19 @@ def counted(selector: str, window: str) -> str:
 
 
 def llm_calls(f: str, window: str = "$__rate_interval") -> str:
-    return f'sum({counted(f"arc_calls_total{{{f},gen_ai_request_model!=\"\"}}", window)})'
+    selector = f'arc_calls_total{{{f},gen_ai_request_model!=""}}'
+    return f"sum({counted(selector, window)})"
 
 
 def calls_by(group: str, f: str, window: str = "$__range") -> str:
-    return f'sum by ({group}) ({counted(f"arc_calls_total{{{f},gen_ai_request_model!=\"\"}}", window)})'
+    selector = f'arc_calls_total{{{f},gen_ai_request_model!=""}}'
+    return f"sum by ({group}) ({counted(selector, window)})"
 
 
 def error_rate(f: str, window: str = "$__range", by: str | None = None) -> str:
     grouping = f" by ({by})" if by else ""
-    errors = f"sum{grouping} ({counted(f'arc_calls_total{{{f},status_code=\"STATUS_CODE_ERROR\"}}', window)})"
+    error_selector = f'arc_calls_total{{{f},status_code="STATUS_CODE_ERROR"}}'
+    errors = f"sum{grouping} ({counted(error_selector, window)})"
     total = f"sum{grouping} ({counted(f'arc_calls_total{{{f}}}', window)})"
     return f"100 * ({errors} or {total} * 0) / clamp_min({total}, 1)"     # 0 %, not "no data", without errors
 

@@ -11,6 +11,10 @@ follow evidence that only needs Reader access:
   network            -> private endpoints in the starting point's virtual network
   naming             -> resources whose name contains the product's name token
 
+Two more kinds come from outside this module (`extra`): calls the product's App Insights recorded
+to a resource's endpoint (Log Analytics Reader; finds services used with API keys, which leave no
+role assignment), and resources a reviewer added by hand.
+
 Each piece of evidence has a weight; they combine as independent signals (noisy-or) into a
 confidence score. A person then confirms or rejects the proposal (see services/azure_resources.py).
 Pure functions: no Azure calls, no database.
@@ -19,6 +23,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 HIGH, MEDIUM, LOW = "high", "medium", "low"
 
@@ -37,6 +42,7 @@ _WEIGHTS = {
     "anchor": 1.0, "identity": 0.9, "tag": 0.9, "app_insights": 0.9, "role": 0.8, "access_policy": 0.8,
     "hosting": 0.8, "network": 0.5, "name": 0.3,
 }
+CALLS_WEIGHT = 0.95     # calls App Insights recorded to the resource's own endpoint
 
 # Well-known built-in role definition ids, to explain the evidence in words.
 _ROLE_NAMES = {
@@ -230,9 +236,77 @@ def risks_for(res: AzResource) -> list[str]:
     return found
 
 
+# --- observed calls ----------------------------------------------------------------------
+
+# Hosts an AI Services / Cognitive Services account answers on, besides the URLs in its properties.
+_SUBDOMAIN_SUFFIXES = (".openai.azure.com", ".cognitiveservices.azure.com", ".services.ai.azure.com")
+_HOST_KEYS = {"defaulthostname", "hostname", "hostnames", "fullyqualifieddomainname", "fqdn"}
+_COGNITIVE_TYPE = "microsoft.cognitiveservices/accounts"
+
+
+def _hosts_in(value, found: set[str], depth: int = 0) -> None:
+    """Host names in a resource's properties: every http(s) URL, plus host-name fields."""
+    if depth > 5:
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).lower() in _HOST_KEYS:
+                for host in [item] if isinstance(item, str) else item if isinstance(item, list) else []:
+                    if isinstance(host, str) and "." in host and "/" not in host:
+                        found.add(host.lower())
+            else:
+                _hosts_in(item, found, depth + 1)
+    elif isinstance(value, list):
+        for item in value:
+            _hosts_in(item, found, depth + 1)
+    elif isinstance(value, str) and value.lower().startswith(("https://", "http://")):
+        host = urlsplit(value).hostname
+        if host:
+            found.add(host.lower())
+
+
+def endpoint_hosts(res: AzResource) -> set[str]:
+    found: set[str] = set()
+    _hosts_in(res.properties, found)
+    subdomain = str(res.properties.get("customSubDomainName") or "").lower()
+    if res.type == _COGNITIVE_TYPE and subdomain:
+        found |= {subdomain + suffix for suffix in _SUBDOMAIN_SUFFIXES}
+    if res.type == "microsoft.search/searchservices":
+        found.add(f"{res.name.lower()}.search.windows.net")
+    return found
+
+
+def call_host(target: str) -> str:
+    """The host in an App Insights dependency Target: 'host', 'host:443', 'host | db' or a URL."""
+    text = str(target or "").split(" | ", 1)[0].strip().lower()
+    if "://" in text:
+        text = urlsplit(text).hostname or ""
+    return text.split(":", 1)[0] if text.count(":") == 1 else text
+
+
+def match_calls(resources: list[AzResource], calls: dict[str, int],
+                skip: set[str] = frozenset()) -> dict[str, tuple[int, list[str]]]:
+    """{resource id: (calls, hosts)} for the call targets that are one resource's endpoint. A host
+    several resources answer on (a shared regional endpoint) says nothing about which one, so it is skipped."""
+    owners: dict[str, set[str]] = {}
+    for res in resources:
+        for host in endpoint_hosts(res):
+            owners.setdefault(host, set()).add(res.id)
+    found: dict[str, tuple[int, list[str]]] = {}
+    for target, count in calls.items():
+        host = call_host(target)
+        ids = owners.get(host, set())
+        if len(ids) == 1 and (rid := next(iter(ids))) not in skip:
+            total, hosts = found.get(rid, (0, []))
+            found[rid] = (total + int(count), hosts if host in hosts else [*hosts, host])
+    return found
+
+
 # --- the mapping -------------------------------------------------------------------------
 
-def build_product_map(inventory: Inventory, starting_point: str, product_tag: str | None = None) -> list[Candidate]:
+def build_product_map(inventory: Inventory, starting_point: str, product_tag: str | None = None,
+                      extra: dict[str, list[tuple[str, float, str]]] | None = None) -> list[Candidate]:
+    """`extra`: more evidence per resource id, as (kind, weight, text): observed calls, manual picks."""
     resources = inventory.resources
     by_id = {r.id: r for r in resources}
     anchor = _find(resources, starting_point)
@@ -242,10 +316,10 @@ def build_product_map(inventory: Inventory, starting_point: str, product_tag: st
 
     signals: dict[str, list[tuple[str, float, str]]] = {}
 
-    def add(res: AzResource, kind: str, text: str) -> None:
+    def add(res: AzResource, kind: str, text: str, weight: float | None = None) -> None:
         signals.setdefault(res.id, [])
         if not any(t == text for _, _, t in signals[res.id]):
-            signals[res.id].append((kind, _WEIGHTS[kind], text))
+            signals[res.id].append((kind, _WEIGHTS[kind] if weight is None else weight, text))
 
     add(anchor, "anchor", "Starting point named by the client")
 
@@ -335,6 +409,12 @@ def build_product_map(inventory: Inventory, starting_point: str, product_tag: st
         for res in resources:
             if res.id != anchor.id and token in _compact(res.name):
                 add(res, "name", f"Name contains '{token}'")
+
+    for rid, found in (extra or {}).items():
+        res = by_id.get(rid)
+        if res is not None and res.id != anchor.id:      # gone from the scope: the row shows "not found"
+            for kind, weight, text in found:
+                add(res, kind, text, weight)
 
     candidates = []
     for rid, found in signals.items():

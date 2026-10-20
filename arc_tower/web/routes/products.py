@@ -6,9 +6,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from arc_tower.connectors import catalog
+from arc_tower.connectors.plugins.azure_platform import service_name
 from arc_tower.integrations.grafana import dashboards as std
 from arc_tower.integrations.prometheus.promql import selector
-from arc_tower.services import access, azure_resources, coverage, kpis, langfuse_routing, products
+from arc_tower.services import access, azure_resources, connectors, coverage, kpis, langfuse_routing, products
 from arc_tower.services.access import Scope
 from arc_tower.services.errors import ValidationFailed
 
@@ -99,14 +100,46 @@ def save_langfuse_keys(request: Request, product_id: int, public_key: str = Form
     return RedirectResponse(f"/products/{product.id}", status_code=303)
 
 
+# Services an AI product usually depends on come first in the "add resources" picker.
+_PICKER_ORDER = ["microsoft.cognitiveservices/accounts", "microsoft.search/searchservices",
+                 "microsoft.documentdb/databaseaccounts", "microsoft.storage/storageaccounts",
+                 "microsoft.keyvault/vaults", "microsoft.web/sites", "microsoft.app/containerapps",
+                 "microsoft.insights/components"]
+
+
 def azure_context(product) -> dict | None:
     """Data for the Azure resource map partial; None for products without the Azure platform connector."""
     if product.connector_type != "azure_platform":
         return None
     rows = product.azure_resources
+    groups: dict[str, list] = {}
+    for item in azure_resources.choices(product):
+        groups.setdefault(item.type, []).append(item)
+    rank = {t: i for i, t in enumerate(_PICKER_ORDER)}
+    choices = [(service_name(t), groups[t]) for t in sorted(groups, key=lambda t: (rank.get(t, len(rank)),
+                                                                                    service_name(t).lower()))]
     return {"rows": rows, "cost": azure_resources.cost_summary(product),
             "attributed": {r.id: azure_resources.attributed_cost(r) for r in rows},
-            "pending": sum(1 for r in rows if r.present and r.status == azure_resources.PROPOSED)}
+            "pending": sum(1 for r in rows if r.present and r.status == azure_resources.PROPOSED),
+            "choices": choices, "choice_count": sum(len(items) for _, items in choices)}
+
+
+# Before /azure-resources/{row_id}, which would otherwise take "add" as a row id.
+@router.post("/products/{product_id}/azure-resources/add", dependencies=[Depends(web_session.verify_csrf)])
+def add_azure_resources(request: Request, product_id: int, item_ids: list[int] = Form([]), back: str = Form(""),
+                        db: Session = Depends(get_db), scope: Scope = Depends(current_scope)):
+    product = access.get_product(db, scope, product_id, edit=True)
+    target = back if back.startswith(f"/products/{product.id}") else f"/products/{product.id}"
+    try:
+        added = azure_resources.pick(db, scope.email, product, item_ids)
+    except ValidationFailed as exc:
+        web_session.flash(request, str(exc), "error")
+        return RedirectResponse(target, status_code=303)
+    for connector in product.connectors:             # rescan now: sharing, risks, cost and metrics for them
+        connectors.request_run(connector)
+    names = ", ".join(r.name for r in added)
+    web_session.flash(request, f"Added {names}. ARC fills in cost, risks and sharing within a minute.")
+    return RedirectResponse(target, status_code=303)
 
 
 @router.post("/products/{product_id}/azure-resources/{row_id}", dependencies=[Depends(web_session.verify_csrf)])

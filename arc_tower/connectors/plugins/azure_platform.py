@@ -10,7 +10,10 @@ The connector runs every minute; each part has its own pace:
   - every 30 min (or on "Run now" / connector save): scan the subscriptions / resource groups with
     Resource Graph (Reader) and propose which resources belong to the product, starting from the one
     the client named (services/azure_mapping.py), keeping earlier review decisions. The scan also
-    records which metrics each resource publishes and which workspace backs each App Insights resource.
+    records which metrics each resource publishes and which workspace backs each App Insights resource,
+    keeps the whole scanned scope for the "add resources" picker, and reads the calls each mapped App
+    Insights resource recorded in the last 7 days (Log Analytics Reader): a call target that is a
+    resource's endpoint links that resource, even one the app reaches with an API key.
   - every 1 h: month-to-date cost per resource (Cost Management Reader); the product's attributable
     part is re-sent every run as arc_azure_cost.
   - every 1 h: a list-price estimate per resource (services/azure_estimate.py): month-to-date usage
@@ -44,6 +47,8 @@ SCAN_CURSOR = "scan_at"                    # cleared to force a re-scan (see ser
 METRIC_NAMES = "metric_names"              # {resource id: [metrics it publishes]}, refreshed by each scan
 TRACE_SOURCES = "trace_sources"            # {App Insights resource id: workspace GUID}, refreshed by each scan
 TRACES_AT = "traces_at"                    # {App Insights resource id: ingestion time of the last row read}
+CALLS_NOTE = "calls_note"                  # outcome of the last scan's call detection, shown on every run
+CALLS_WINDOW = timedelta(days=7)
 ESTIMATE_REFRESH = timedelta(hours=1)
 FACTS = "facts"                            # {resource id: what the estimate needs (SKU, plan, deployments...)}
 ESTIMATES = "estimates"                    # {resource id: {amount, currency, method, detail}}
@@ -159,11 +164,13 @@ class AzurePlatformConnector(PullConnector):
         if last and now - datetime.fromisoformat(last) < SCAN_REFRESH and ctx.product.azure_resources \
                 and TRACE_SOURCES in cursor and FACTS in cursor:
             mapped = len(azure_resources.tracked(ctx.product))
-            return f"{mapped} resources tracked (scanned {last[11:16]} UTC)"
+            note = f"{mapped} resources tracked (scanned {last[11:16]} UTC)"
+            return note + (f" · {cursor[CALLS_NOTE]}" if cursor.get(CALLS_NOTE) else "")
         s = self._scan(ctx, client, subscriptions, groups, now, cursor)
         cursor[SCAN_CURSOR] = now.isoformat()
         note = f"scanned: {s.total} resources mapped ({s.high} high, {s.medium} medium, {s.low} low; {s.new} new)"
-        return note + (f", {s.missing} no longer found" if s.missing else "")
+        note += f", {s.missing} no longer found" if s.missing else ""
+        return note + f" · {cursor[CALLS_NOTE]}"
 
     def _scan(self, ctx: RunContext, client: AzureClient, subscriptions: list[str], groups: list[str],
               now: datetime, cursor: dict) -> azure_resources.ScanSummary:
@@ -173,9 +180,16 @@ class AzurePlatformConnector(PullConnector):
         except AzureError as exc:
             raise ConnectorError(_hint(exc, "resource scan")) from exc
         inventory = Inventory.from_graph(rows, assignments)
+        azure_resources.record_inventory(ctx.session, ctx.product, inventory.resources, now)
+        starting_point, tag = ctx.config.get("starting_point", ""), ctx.config.get("product_tag") or None
+        extra = azure_resources.picked_evidence(ctx.product)
         try:
-            candidates = azure_mapping.build_product_map(inventory, ctx.config.get("starting_point", ""),
-                                                         ctx.config.get("product_tag") or None)
+            candidates = azure_mapping.build_product_map(inventory, starting_point, tag, extra)
+            calls, cursor[CALLS_NOTE] = self._observed_calls(ctx, client, inventory, candidates, now)
+            if calls:                    # map again with what the app was seen calling
+                for rid, found in calls.items():
+                    extra.setdefault(rid, []).extend(found)
+                candidates = azure_mapping.build_product_map(inventory, starting_point, tag, extra)
         except MappingError as exc:
             raise ConnectorError(str(exc)) from exc
         summary = azure_resources.apply_scan(ctx.session, ctx.product, candidates, now)
@@ -254,6 +268,48 @@ class AzurePlatformConnector(PullConnector):
             if guid:
                 sources[res.id] = str(guid)
         return sources
+
+    def _observed_calls(self, ctx: RunContext, client: AzureClient, inventory: Inventory, candidates: list,
+                        now: datetime) -> tuple[dict[str, list[tuple[str, float, str]]], str]:
+        """Evidence from the calls each mapped App Insights resource recorded (AppDependencies targets that
+        are a resource's endpoint). It counts as much as the App Insights resource is the product's own:
+        fully once a reviewer confirmed it, else by its own mapping confidence."""
+        decided = {r.resource_id: r.status for r in ctx.product.azure_resources}
+        components = [c for c in candidates if c.resource.type == _COMPONENT
+                      and decided.get(c.resource.id) != azure_resources.REJECTED]
+        if not components:
+            return {}, "call detection: no App Insights mapped"
+        anchor = next(c.resource.id for c in candidates if c.is_anchor)
+        sources = self._trace_sources(ctx, client, inventory, [c.resource for c in components])
+        found: dict[str, list[tuple[str, float, str]]] = {}
+        read, problems = 0, []
+        for c in components:
+            res = c.resource
+            if res.id not in sources:
+                workspace = str(res.properties.get("WorkspaceResourceId") or "").rsplit("/", 1)[-1]
+                problems.append(f"{res.name}: workspace {workspace} not readable - grant Log Analytics Reader on it"
+                                if workspace else f"{res.name}: classic App Insights, no workspace")
+                continue
+            if not _SAFE_ID.match(res.id):                    # it goes into the KQL text
+                continue
+            query = (f"AppDependencies\n| where _ResourceId =~ '{res.id}'\n| where TimeGenerated > ago(7d)\n"
+                     "| summarize calls = count() by Target")
+            try:
+                rows = client.logs_query(sources[res.id], query, now - CALLS_WINDOW, now)
+            except AzureError as exc:
+                problems.append(_hint(exc, f"calls from {res.name}"))
+                continue
+            read += 1
+            calls = {str(row.get("Target") or ""): int(row.get("calls") or 0) for row in rows}
+            trust = 1.0 if decided.get(res.id) == azure_resources.CONFIRMED else c.score
+            matched = azure_mapping.match_calls(inventory.resources, calls, {anchor, res.id})
+            for rid, (count, hosts) in matched.items():
+                found.setdefault(rid, []).append((
+                    "calls", round(azure_mapping.CALLS_WEIGHT * trust, 3),
+                    f"App Insights {res.name} recorded {count:,} calls to it in 7 days ({', '.join(hosts)})"))
+        note = f"call detection: {len(found)} called resources found in {read} App Insights" if read else \
+            "call detection: off"
+        return found, note + (f" ({'; '.join(problems)})" if problems else "")
 
     def _pull_metrics(self, ctx: RunContext, client: AzureClient, now: datetime, cursor: dict) -> tuple[int, int]:
         count = errors = 0
